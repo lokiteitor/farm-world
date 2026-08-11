@@ -102,3 +102,37 @@ dist
 
 # TernJS port file
 .tern-port
+
+# ---------------------------------------------------------------------------
+# Farming Management Simulator Online — project-specific entries (W1)
+# ---------------------------------------------------------------------------
+
+# Dependencies (one independent npm project per directory, no workspaces)
+node_modules
+
+# Build output
+dist
+.nuxt
+.output
+*.tsbuildinfo
+coverage
+
+# Local environment
+.env
+.env.local
+
+# Generated copies of shared/. The canonical source is shared/ at the
+# repository root; these are produced by scripts/sync-shared-types.sh.
+backend/src/shared/
+frontend/app/shared/
+
+# Prisma 7 client. The `prisma-client` generator emits TypeScript and requires an
+# explicit `output`, which cannot live outside src/ because tsconfig.build.json
+# declares `rootDir: "src"` (TS6059). Generated and regenerable by
+# `make generate`, exactly like backend/src/shared. Applied by the W2.5 patching
+# window (docs/handoff/NOTES-w2d.md, item 2).
+backend/src/generated/
+
+# Local database dumps. The balance report in docs/balance/ is versioned on
+# purpose: it is the deliverable that documents the GDD deviations.
+backups/

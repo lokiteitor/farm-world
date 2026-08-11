@@ -1,0 +1,185 @@
+# Production stack.
+#
+# Frozen after workflow W1 (plan section 11, rule 2). Differences from the
+# development stack, all deliberate:
+#
+#   - Built images, no bind mounts and no dev dependencies in the runtime layer.
+#   - PostgreSQL and Redis publish no host port: they are reachable only over the
+#     internal network, and Caddy is the single entry point.
+#   - The single-page application is not a service. A one-shot `frontend-dist`
+#     job copies the static build into a named volume and exits; Caddy serves
+#     that volume read-only (stack section 7.1, plan section 9).
+#
+# Deploy with `make deploy`, which builds, publishes the assets and rolls the
+# services in that order.
+
+name: farm-world-prod
+
+x-backend-image: &backend-image
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+    target: runtime
+  image: farm-world/backend:${IMAGE_TAG:-latest}
+
+x-backend-env: &backend-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://${POSTGRES_USER:-farmworld}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in production}@postgres:5432/${POSTGRES_DB:-farmworld}?schema=public
+  REDIS_URL: redis://redis:6379
+  JWT_SECRET: ${JWT_SECRET:?JWT_SECRET is required in production}
+  # Never enabled outside development: these endpoints move the clock and reset
+  # worlds.
+  DEV_ENDPOINTS: 'false'
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: '20m'
+    max-file: '5'
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-farmworld}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required in production}
+      POSTGRES_DB: ${POSTGRES_DB:-farmworld}
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    volumes:
+      # Not /var/lib/postgresql/data: the postgres:18 image rejects a mount on the
+      # data directory itself (docs/handoff/NOTES-w2d.md, item 6).
+      - pg_data:/var/lib/postgresql
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -q -U "${POSTGRES_USER:-farmworld}" -d "${POSTGRES_DB:-farmworld}" && psql -q -U "${POSTGRES_USER:-farmworld}" -d "${POSTGRES_DB:-farmworld}" -c "SELECT 1" >/dev/null',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    logging: *logging
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--appendfsync',
+        'everysec',
+        '--save',
+        '900',
+        '1',
+        '--maxmemory-policy',
+        'noeviction',
+      ]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', '[ "$$(redis-cli ping)" = "PONG" ]']
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 15s
+
+  backend:
+    <<: *backend-image
+    restart: unless-stopped
+    logging: *logging
+    command: ['node', 'dist/server.js']
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *backend-env
+      PORT: '3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://127.0.0.1:3000/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  worker:
+    <<: *backend-image
+    restart: unless-stopped
+    logging: *logging
+    command: ['node', 'dist/worker.js']
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      <<: *backend-env
+      METRICS_PORT: '9464'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend-dist:
+    # One-shot publisher. Builds the SPA, copies it into the named volume and
+    # exits; there is no frontend process in production.
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: dist
+    image: farm-world/frontend-dist:${IMAGE_TAG:-latest}
+    restart: 'no'
+    logging: *logging
+    command:
+      [
+        'sh',
+        '-c',
+        'set -e; rm -rf /srv/frontend/*; cp -a /dist/. /srv/frontend/; ls -1 /srv/frontend | head -20',
+      ]
+    volumes:
+      - frontend_dist:/srv/frontend
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    logging: *logging
+    environment:
+      # Set to the public host name to obtain a TLS certificate automatically.
+      CADDY_SITE_ADDRESS: ${CADDY_SITE_ADDRESS:-:80}
+    ports:
+      # The defaults are the free ones of .env.example and not 80 and 443, so that
+      # the production stack can also be exercised on a development machine where
+      # both are taken. A real deployment sets HTTP_PORT=80 and HTTPS_PORT=443
+      # explicitly, which is also what automatic TLS issuance requires.
+      - '${HTTP_PORT:-8080}:80'
+      - '${HTTPS_PORT:-8443}:443'
+    volumes:
+      - ./infra/caddy/Caddyfile.prod:/etc/caddy/Caddyfile:ro
+      - frontend_dist:/srv/frontend:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_healthy
+      frontend-dist:
+        condition: service_completed_successfully
+
+volumes:
+  pg_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  frontend_dist:

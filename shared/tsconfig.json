@@ -1,0 +1,13 @@
+{
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    // No DOM and no Node types on purpose: the shared rules are pure and
+    // deterministic (plan section 8). If a file here needs `process` or
+    // `window`, it belongs in backend/ or frontend/ instead.
+    "lib": ["ES2023"],
+    "types": [],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "coverage"]
+}

@@ -1,0 +1,136 @@
+name: CI
+
+# The pipeline runs the same commands a developer runs locally, through the
+# Makefile, so that "it passes in CI" and "it passes on my machine" cannot
+# diverge (stack section 8).
+
+on:
+  push:
+    branches: [master, main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  static:
+    name: Sincronizacion, lint, tipos y pruebas unitarias
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            shared/package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      # Four independent npm projects, no workspaces (plan section 4). The root
+      # project carries only the lint and format tooling.
+      - name: Instalar dependencias
+        run: make install
+
+      # shared/ is the single source of truth; the copies are generated. Syncing
+      # first and then checking proves the script is idempotent and that no copy
+      # was committed by hand.
+      - name: Sincronizar shared/
+        run: make sync-types
+
+      - name: Comprobar que las copias de shared/ no divergen
+        run: make check-sync
+
+      - name: Validar los ficheros de Compose
+        run: make compose-config
+
+      - name: Lint, incluidas las reglas de zona entre modulos
+        run: make lint
+
+      - name: Comprobacion de tipos
+        run: make typecheck
+
+      - name: Pruebas unitarias
+        run: make test-unit
+
+  integration:
+    name: Pruebas de integracion con Postgres y Redis
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Independent job: it needs real services, so it must not slow down the
+    # feedback of the static checks.
+    services:
+      postgres:
+        image: postgres:18-alpine
+        env:
+          POSTGRES_USER: farmworld
+          POSTGRES_PASSWORD: farmworld
+          POSTGRES_DB: farmworld_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U farmworld -d farmworld_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 12
+
+      redis:
+        image: redis:8-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+
+    env:
+      DATABASE_URL: postgresql://farmworld:farmworld@localhost:5432/farmworld_test?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-only-secret
+      JWT_ACCESS_TTL: '900'
+      REFRESH_TTL: '2592000'
+      GAME_RATE_NUM: '12'
+      GAME_RATE_DEN: '1'
+      SCHEDULE_HORIZON_REAL_MS: '86400000'
+      WORLD_SEED: '20260811'
+      PORT: '3000'
+      LOG_LEVEL: warn
+      DEV_ENDPOINTS: 'true'
+      CORS_ORIGIN: http://localhost:3001
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            shared/package-lock.json
+            backend/package-lock.json
+            frontend/package-lock.json
+
+      - name: Instalar dependencias
+        run: make install
+
+      - name: Sincronizar shared/
+        run: make sync-types
+
+      - name: Generar el cliente de Prisma
+        run: make generate
+
+      - name: Aplicar migraciones
+        run: make migrate
+
+      - name: Pruebas de integracion
+        run: make test-int

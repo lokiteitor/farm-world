@@ -1,0 +1,47 @@
+# Production reverse proxy.
+#
+# Same route table as the development Caddyfile, with the single-page
+# application served from the named volume that the one-shot `frontend-dist`
+# service of docker-compose.prod.yml publishes.
+#
+# CADDY_SITE_ADDRESS carries the public host name so that Caddy obtains a TLS
+# certificate automatically (stack section 7.1). It defaults to :80 for a local
+# rehearsal of the production topology.
+
+{
+	admin off
+	log {
+		format json
+	}
+}
+
+{$CADDY_SITE_ADDRESS::80} {
+	encode zstd gzip
+
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle /ws* {
+		reverse_proxy backend:3000
+	}
+
+	# Static client. The SPA has no server-side rendering (plan section 9), so
+	# every unknown path resolves to index.html and the router takes over.
+	handle {
+		root * /srv/frontend
+		try_files {path} /index.html
+		file_server
+
+		# Hashed build assets are immutable; index.html must not be cached.
+		@immutable path /_nuxt/*
+		header @immutable Cache-Control "public, max-age=31536000, immutable"
+		header /index.html Cache-Control "no-cache"
+	}
+
+	header {
+		Referrer-Policy strict-origin-when-cross-origin
+		X-Content-Type-Options nosniff
+		-Server
+	}
+}

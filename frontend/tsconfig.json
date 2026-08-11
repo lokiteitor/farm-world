@@ -1,0 +1,15 @@
+{
+  // Solution-style configuration. Nuxt 4 generates one project per execution
+  // environment under .nuxt/ (app, server, shared, node) and this file only
+  // references them, which is why `nuxt prepare` is a prerequisite of the type
+  // check. The strict options that go beyond the Nuxt defaults are injected from
+  // nuxt.config.ts (typescript.tsConfig), because the compilerOptions of a
+  // solution file do not reach the referenced projects.
+  "files": [],
+  "references": [
+    { "path": "./.nuxt/tsconfig.app.json" },
+    { "path": "./.nuxt/tsconfig.server.json" },
+    { "path": "./.nuxt/tsconfig.shared.json" },
+    { "path": "./.nuxt/tsconfig.node.json" }
+  ]
+}

@@ -1,0 +1,61 @@
+# Observability overlay, profile "obs".
+#
+# Frozen after workflow W1 (plan section 11, rule 2). Composed on top of another
+# file, never on its own:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.obs.yml --profile obs up -d
+#   make obs-up / make obs-down
+#
+# Rationale for the profile (docs/erratas-gdd-stack.md, contradiction 4): the
+# stack document asks for observability from the start (sections 1 and 7.1) and
+# also defers it to phase 2 and excludes it from the MVP (sections 10 and 14).
+# The resolution splits the two: Pino, /health and /metrics are part of the
+# service and always present, while Prometheus and Grafana are opt-in so their
+# maintenance cost does not compete with development time.
+
+name: farm-world
+
+services:
+  prometheus:
+    image: prom/prometheus:latest
+    profiles: ['obs']
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=15d'
+      - '--web.enable-lifecycle'
+    ports:
+      # Not the canonical 9090: see the port table of .env.example.
+      - '${PROMETHEUS_PORT:-59090}:9090'
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://127.0.0.1:9090/-/healthy']
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  grafana:
+    image: grafana/grafana:latest
+    profiles: ['obs']
+    restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_AUTH_ANONYMOUS_ENABLED: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+      GF_ANALYTICS_CHECK_FOR_UPDATES: 'false'
+    ports:
+      - '${GRAFANA_PORT:-53000}:3000'
+    volumes:
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+
+volumes:
+  prometheus_data:
+  grafana_data:

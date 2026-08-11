@@ -1,0 +1,204 @@
+# Development stack.
+#
+# Frozen after workflow W1 (plan section 11, rule 2). Sources are bind mounted so
+# that both Node processes and the Nuxt dev server reload without rebuilding the
+# image; node_modules and .nuxt live in named volumes so the host copies never
+# shadow the ones installed inside the image.
+#
+# The build context of every image is the repository root, because the images
+# copy shared/ themselves instead of trusting that `make sync-types` ran on the
+# host. See .dockerignore.
+#
+# Every published host port is a variable with a default that is deliberately not
+# the canonical one, because the canonical ports collide with other projects on a
+# development machine and a collision aborts `make up` for the whole stack. The
+# in-container ports never change. The table and the reasoning are in .env.example.
+
+name: farm-world
+
+# The backend and the worker are the same project with two entry points (plan
+# section 2.1): one image, one dependency tree, two services distinguished only
+# by `command`.
+x-backend-image: &backend-image
+  build:
+    context: .
+    dockerfile: backend/Dockerfile
+    target: dev
+  image: farm-world/backend:dev
+
+x-backend-env: &backend-env
+  NODE_ENV: development
+  # Overrides the localhost values of .env: inside the compose network the
+  # services are reachable by name.
+  DATABASE_URL: postgresql://${POSTGRES_USER:-farmworld}:${POSTGRES_PASSWORD:-farmworld}@postgres:5432/${POSTGRES_DB:-farmworld}?schema=public
+  REDIS_URL: redis://redis:6379
+
+x-env-file: &env-file
+  - path: .env
+    required: false
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-farmworld}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-farmworld}
+      POSTGRES_DB: ${POSTGRES_DB:-farmworld}
+      # Deterministic collation: ordering must not depend on the host locale.
+      POSTGRES_INITDB_ARGS: '--encoding=UTF8 --locale=C'
+    ports:
+      # Published so that host tooling (prisma migrate, seed, integration
+      # tests, tools/balance) works with the DATABASE_URL of .env. The default is
+      # not the canonical 5432: see the port table of .env.example.
+      - '${POSTGRES_PORT:-55432}:5432'
+    volumes:
+      # Not /var/lib/postgresql/data. From version 18 the official image stores
+      # the cluster in a subdirectory named after the major version and rejects a
+      # mount on the data directory itself, exiting in a restart loop
+      # (docs/handoff/NOTES-w2d.md, item 6).
+      - pg_data:/var/lib/postgresql
+      - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/10-init.sql:ro
+    healthcheck:
+      # Real check: the server answers as the application user, on the
+      # application database. `pg_isready` alone would pass during initdb.
+      test:
+        [
+          'CMD-SHELL',
+          'pg_isready -q -U "${POSTGRES_USER:-farmworld}" -d "${POSTGRES_DB:-farmworld}" && psql -q -U "${POSTGRES_USER:-farmworld}" -d "${POSTGRES_DB:-farmworld}" -c "SELECT 1" >/dev/null',
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  redis:
+    image: redis:8-alpine
+    restart: unless-stopped
+    # Append-only persistence keeps delayed BullMQ jobs across a restart. Losing
+    # them is survivable by design (sim.reconcile re-enqueues from PostgreSQL),
+    # but not free, so it is avoided where it costs nothing.
+    command:
+      [
+        'redis-server',
+        '--appendonly',
+        'yes',
+        '--appendfsync',
+        'everysec',
+        '--save',
+        '900',
+        '1',
+        '--maxmemory-policy',
+        'noeviction',
+      ]
+    ports:
+      - '${REDIS_PORT:-56379}:6379'
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD-SHELL', '[ "$$(redis-cli ping)" = "PONG" ]']
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    <<: *backend-image
+    restart: unless-stopped
+    command: ['npm', 'run', 'dev']
+    env_file: *env-file
+    environment:
+      <<: *backend-env
+      # In-container listening port, read by src/server.ts. The published host
+      # port is a separate variable, because only the latter can collide with
+      # another project on the machine.
+      PORT: '3000'
+    ports:
+      - '${BACKEND_PORT:-3000}:3000'
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD-SHELL',
+          'node -e "fetch(\"http://127.0.0.1:3000/health\").then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"',
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+
+  worker:
+    <<: *backend-image
+    # The W1 worker is a stub that logs one line and exits; restarting it would
+    # produce a crash loop. Workflow W3 replaces it with the long-lived BullMQ
+    # consumer, at which point this becomes `unless-stopped`.
+    restart: 'no'
+    command: ['npm', 'run', 'dev:worker']
+    env_file: *env-file
+    environment:
+      <<: *backend-env
+      # The worker has no HTTP surface of its own; it only exposes /metrics.
+      METRICS_PORT: '9464'
+    volumes:
+      - ./backend:/app
+      - backend_node_modules:/app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: dev
+    image: farm-world/frontend:dev
+    restart: unless-stopped
+    command: ['npm', 'run', 'dev']
+    env_file: *env-file
+    environment:
+      NODE_ENV: development
+      # Nuxt proxies /api and /ws to this origin in development; host and
+      # port of the dev server come from frontend/nuxt.config.ts.
+      NUXT_PUBLIC_API_ORIGIN: http://backend:3000
+    ports:
+      - '${FRONTEND_DEV_PORT:-3100}:3001'
+    volumes:
+      - ./frontend:/app
+      - frontend_node_modules:/app/node_modules
+      - frontend_nuxt:/app/.nuxt
+    depends_on:
+      backend:
+        condition: service_started
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - '${HTTP_PORT:-8080}:80'
+    volumes:
+      - ./infra/caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      backend:
+        condition: service_started
+      frontend:
+        condition: service_started
+
+volumes:
+  pg_data:
+  redis_data:
+  caddy_data:
+  caddy_config:
+  backend_node_modules:
+  frontend_node_modules:
+  frontend_nuxt:

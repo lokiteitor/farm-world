@@ -1,0 +1,39 @@
+# The build context of every image is the repository root, so this single file
+# governs all of them (see docker-compose.yml / docker-compose.prod.yml).
+node_modules
+**/node_modules
+
+# Build output
+dist
+**/dist
+.nuxt
+**/.nuxt
+.output
+**/.output
+*.tsbuildinfo
+**/*.tsbuildinfo
+coverage
+**/coverage
+
+# Synchronised copies of shared/. Images copy the canonical shared/ directory
+# instead, so the copies must never enter the context.
+backend/src/shared
+frontend/app/shared
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+
+# Tooling and VCS
+.git
+.gitignore
+.github
+.vscode
+.idea
+*.log
+logs
+
+# Documentation and local infrastructure state
+docs
+backups

@@ -1,0 +1,151 @@
+/*
+ * Design tokens.
+ *
+ * Owner: W3-C for the interface block, W3-D for the palette block. Referenced by
+ * nuxt.config.ts, which is frozen, so the file name cannot change.
+ *
+ * The file has two halves and the split is the whole point of it existing:
+ *
+ *   1. THE PALETTE BLOCK is the canonical world palette. Its single source of
+ *      truth is frontend/app/game/textures/palette.ts (W3-D), which generates
+ *      every Phaser texture from the same numbers. The values below are the
+ *      contract W3-D must re-export unchanged: the legend of the panels, the
+ *      per-cell colour of the tilemap and the pixel of the minimap have to be
+ *      the same colour or the legend lies (plan section 9.4). W3-D regenerates
+ *      the block between the two markers and touches nothing else in this file.
+ *
+ *   2. THE INTERFACE BLOCK is layout, typography and the semantic surfaces of
+ *      the DOM. It has no counterpart on the canvas and W3-D does not touch it.
+ *
+ * Every consumer reads these through `var(--fw-x, fallback)` so that a renamed
+ * or dropped token degrades to a legible colour instead of to `unset`
+ * (frontend/app/assets/shell.css). The fallback is not a second palette: it is
+ * the failure mode.
+ */
+
+/* ==========================================================================
+ * fw-palette:start — generated block. Owner W3-D, from game/textures/palette.ts
+ * ========================================================================== */
+
+/* Generated from app/game/textures/palette.ts (W3-D). Do not edit by hand. */
+:root {
+  --fw-terrain-grass: #7a9c4f;
+  --fw-terrain-forest: #35583a;
+  --fw-terrain-mountain: #7b7970;
+  --fw-terrain-water: #2f5f8c;
+  --fw-use-owned: #e0b352;
+  --fw-use-field: #8a6a3a;
+  --fw-use-forest-plot: #4a7350;
+  --fw-use-building: #8a8377;
+  --fw-use-road: #5c5c5c;
+  --fw-use-owned-foreign: #9b7fc4;
+  --fw-crop-virgin: #9dbb70;
+  --fw-crop-plowed: #573a25;
+  --fw-crop-cultivated: #664428;
+  --fw-crop-seeded: #b9a06a;
+  --fw-crop-germinating: #9dc167;
+  --fw-crop-growing: #5f9a3f;
+  --fw-crop-ready: #efd989;
+  --fw-crop-harvested: #c8b482;
+  --fw-tree-sapling: #6f9a4a;
+  --fw-tree-young: #4f7f3f;
+  --fw-tree-mature: #366634;
+  --fw-tree-old-growth: #27512c;
+  --fw-entity-worker: #d8d2c4;
+  --fw-entity-tractor: #4d7c34;
+  --fw-entity-implement: #5a5f66;
+  --fw-entity-harvester: #a83c30;
+  --fw-entity-forestry: #c96a1e;
+  --fw-select-valid: #7ad07a;
+  --fw-select-invalid: #d9584c;
+  --fw-select-neutral: #e8e8e8;
+  --fw-select-pending: #4fc3d9;
+  --fw-outline-owned: #e0b352;
+  --fw-outline-field: #9dc167;
+  --fw-outline-farm: #cfd4dc;
+  --fw-outline-forest-plot: #9fd08f;
+  --fw-grid-line: #ffffff1a;
+  --fw-machine-tractor: #4d7c34;
+  --fw-machine-plow: #5a5f66;
+  --fw-machine-cultivator: #4f6b86;
+  --fw-machine-seeder: #6b5f86;
+  --fw-machine-harvester: #a83c30;
+  --fw-machine-trailer: #6f7a6a;
+  --fw-machine-harvester-forestry: #c96a1e;
+  --fw-machine-forwarder: #c9a41e;
+  --fw-building-garage: #5b6570;
+  --fw-building-silo: #b6bcc2;
+  --fw-building-worker-home: #b6a58a;
+  --fw-building-workshop: #7a6a58;
+  --fw-building-wood-storage: #8a6b45;
+  --fw-canvas-void: #101317;
+}
+
+/* ==========================================================================
+ * fw-palette:end
+ * ========================================================================== */
+
+:root {
+  /* ------------------------------------------------------------------------
+   * Interface block. Owner W3-C.
+   * ---------------------------------------------------------------------- */
+
+  color-scheme: dark;
+
+  /* Surfaces */
+  --fw-bg: #14171c;
+  --fw-surface: #1c2027;
+  --fw-surface-raised: #242932;
+  --fw-surface-sunken: #101318;
+  --fw-overlay: #0b0d1199;
+  --fw-border: #333a45;
+  --fw-border-strong: #48525f;
+
+  /* Text */
+  --fw-text: #e6e9ee;
+  --fw-text-muted: #9aa4b2;
+  --fw-text-inverse: #14171c;
+
+  /* Semantic state. `accent` is the affirmative action, `warning` is a
+     condition the player can still act on, `danger` is a rejection. They map
+     onto the three tiers of a selection verdict on purpose. */
+  --fw-accent: #6ea36b;
+  --fw-accent-strong: #85c07f;
+  --fw-warning: #c9a227;
+  --fw-danger: #b4544a;
+  --fw-info: #5f88b0;
+
+  /* Connection status. A dead socket is indistinguishable from an idle world
+     unless it is shown, which is why these are tokens and not literals
+     (plan section 7). */
+  --fw-net-online: #6ea36b;
+  --fw-net-connecting: #c9a227;
+  --fw-net-resyncing: #5f88b0;
+  --fw-net-offline: #b4544a;
+
+  /* Layout. The CSS grid of plan section 9.1 decides the size of the canvas and
+     a ResizeObserver tells Phaser about it, never the other way round. */
+  --fw-topbar-height: 48px;
+  --fw-tabbar-height: 40px;
+  --fw-sidepanel-width: 360px;
+  --fw-sidepanel-width-collapsed: 0px;
+  --fw-notice-width: 340px;
+  --fw-radius: 4px;
+  --fw-radius-lg: 8px;
+  --fw-gap: 8px;
+  --fw-gap-lg: 16px;
+
+  /* Elevation of the two fixed layers. The modal layer is above the notice
+     layer: a notice must never cover the dialogue that is taking input. */
+  --fw-z-viewport: 0;
+  --fw-z-shell: 10;
+  --fw-z-notices: 40;
+  --fw-z-modals: 50;
+
+  /* Typography */
+  --fw-font-ui: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --fw-font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Menlo, monospace;
+  --fw-font-size: 14px;
+  --fw-font-size-sm: 12px;
+  --fw-font-size-lg: 16px;
+}

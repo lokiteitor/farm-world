@@ -1,0 +1,14 @@
+{
+  // Type-checking project: everything the backend owns, including tests and the
+  // Prisma seed. `npm run typecheck` and the ESLint TypeScript resolver use it.
+  // Emitting is the job of tsconfig.build.json.
+  "extends": "../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "noEmit": true,
+    "allowImportingTsExtensions": false
+  },
+  "include": ["src/**/*.ts", "prisma/**/*.ts", "vitest.config.ts", "vitest.int.config.ts"],
+  "exclude": ["node_modules", "dist", "coverage"]
+}

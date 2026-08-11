@@ -1,0 +1,1287 @@
+// Data model of Farming Management Simulator Online.
+//
+// Owner: workflow W2 (data schema). Frozen after W2, for the whole scope of
+// phases 0 to 8 of the roadmap (GDD section 71), so that later workflows add
+// migrations but never reshape what is already here (plan section 11, rule 2).
+//
+// Six conventions govern the whole file. They are the reason a column looks the
+// way it does, so they are stated once here instead of on every model.
+//
+// 1. Time. Every instant with simulation or economic meaning is a BigInt of game
+//    milliseconds, named `...GameMs` (plan section 6.1). Real instants exist only
+//    as traces and as scheduling detail, are named `...RealMs`, and no game time
+//    is ever derived from a stored real instant. There is therefore no
+//    `DateTime` column anywhere in this schema, on purpose: a timestamptz would
+//    invite exactly that derivation.
+//
+// 2. Money. `Decimal(20, 4)`, four decimals, never floating point and never
+//    integer cents. The settlement of continuous costs is very frequent by
+//    design, and rounding on each one accumulates a systematic bias in favour of
+//    the player (plan section 6.2). The only constructor on the application side
+//    is the shared `Money` module, which serialises as a canonical decimal
+//    string.
+//
+// 3. Percentages. Every domain percentage (skill, condition, fertility, weeds,
+//    fertilisation) is an integer in basis points, 0..10000, so that lazy
+//    accrual is deterministic and reproducible in the tests (plan section 5.2).
+//    The range is enforced by CHECK constraints added in the initial migration.
+//
+// 4. Fungible quantities. Integers in the stored unit: wheat in litres, wood in
+//    cubic decimetres. The volumes of GDD section 131 are multiples of 0.05 m3,
+//    and adding thousands of them as floating point would make a lazy sum depend
+//    on its order (`shared/config/buildings.ts`, STORAGE_RESOURCE_UNITS).
+//
+// 5. Catalogue data is not stored. Prices per game hour, work speeds, wear
+//    rates, footprints, wood volumes per stage and sale prices live in
+//    `shared/config/` as constants versioned with the code (plan section 5.2).
+//    What is stored is what the catalogue cannot know: the price actually paid,
+//    the capacity snapshot a CHECK needs, and the state of the individual row.
+//
+// 6. Logical deletion. Everything that takes part in a cost keeps a validity
+//    interval and is never deleted physically, because an immutable ledger must
+//    keep pointing at something (plan sections 5.3 and 6.2). Physical deletion is
+//    reserved for rows that no accrual integral ever reads.
+//
+// The enums mirror `shared/domain/enums.ts` value by value, including the members
+// the MVP never produces: adding a column to PostgreSQL is instantaneous whereas
+// migrating an enum is not, so the sets reserve aggressively (plan section 5.2).
+//
+// Table names are mapped to snake_case plurals. Column names keep the camelCase
+// of the domain, so raw SQL quotes them; the reason for the asymmetry is that the
+// initial migration carries a substantial amount of hand-written SQL (checks,
+// triggers, partial indexes) and unquoted table names keep it readable.
+
+// ---------------------------------------------------------------------------
+// Generator and datasource
+// ---------------------------------------------------------------------------
+
+// Prisma 7 offers a single generator, `prisma-client`, which emits TypeScript
+// sources and requires an explicit output. The legacy `prisma-client-js`, which
+// wrote compiled JavaScript into node_modules, no longer exists.
+//
+// The output sits inside `src/` because the emitted files are TypeScript and
+// therefore have to be compiled by the backend project itself:
+// `backend/tsconfig.build.json` has `rootDir: "src"`, so any generated source
+// outside that root fails the build with TS6059. It is the same arrangement as
+// `backend/src/shared/`: generated, never edited by hand, not versioned.
+//
+// The four remaining options are pinned rather than inferred from tsconfig, so
+// that the emitted import specifiers cannot change if a compiler option is
+// changed later.
+generator client {
+  provider               = "prisma-client"
+  output                 = "../src/generated/prisma"
+  runtime                = "nodejs"
+  moduleFormat           = "esm"
+  generatedFileExtension = "ts"
+  importFileExtension    = "js"
+}
+
+// The URL is supplied by backend/prisma.config.ts. Prisma 7 ignores a `url`
+// field here.
+datasource db {
+  provider = "postgresql"
+}
+
+// ---------------------------------------------------------------------------
+// Enums — world
+// ---------------------------------------------------------------------------
+
+/// Generated terrain of a cell (GDD section 8).
+enum TerrainType {
+  GRASS
+  FOREST
+  MOUNTAIN
+  WATER
+}
+
+/// What a cell is used for (GDD section 15). Exclusive by construction, enforced
+/// by the intra-row CHECK of the initial migration. `ROAD` is reserved: roads
+/// appear in GDD section 15 but not in the MVP list of GDD section 69.
+enum LandUse {
+  NONE
+  OWNED
+  FIELD
+  FOREST_PLOT
+  BUILDING
+  ROAD
+}
+
+// ---------------------------------------------------------------------------
+// Enums — agriculture
+// ---------------------------------------------------------------------------
+
+/// The eight states of GDD sections 41 and 76, in cycle order.
+enum CropCycleState {
+  VIRGIN
+  PLOWED
+  CULTIVATED
+  SEEDED
+  GERMINATING
+  GROWING
+  READY_TO_HARVEST
+  HARVESTED
+}
+
+/// Soil condition (GDD section 81). `COMPACTED` is reserved, placed outside the
+/// MVP by GDD sections 81 and 86.
+enum SoilCondition {
+  UNTOUCHED
+  PLOWED
+  CULTIVATED
+  COMPACTED
+}
+
+/// Crops of the catalogue. One crop in the MVP (GDD sections 42 and 86).
+enum CropId {
+  WHEAT
+}
+
+// ---------------------------------------------------------------------------
+// Enums — machinery
+// ---------------------------------------------------------------------------
+
+/// Machine types: GDD section 89 for agriculture, GDD section 134 for forestry,
+/// which is a separate catalogue by design.
+enum MachineType {
+  TRACTOR
+  PLOW
+  CULTIVATOR
+  SEEDER
+  HARVESTER
+  TRAILER
+  HARVESTER_FORESTRY
+  FORWARDER
+}
+
+/// Self propelled machine or towed implement (GDD section 88). Stored only on
+/// `TaskMachine`, to record which machine of a task set the pace and which one
+/// was towed; on `Machine` it would duplicate the catalogue.
+enum MachineRole {
+  POWERED
+  IMPLEMENT
+}
+
+/// Machine status (GDD section 95). `BROKEN` is reserved, since random breakdowns
+/// are outside the strict MVP. `IN_REPAIR` is active, unlike in GDD section 95:
+/// repair is a scheduled event with a duration (plan section 2.2).
+enum MachineStatus {
+  IDLE
+  WORKING
+  BROKEN
+  IN_REPAIR
+}
+
+// ---------------------------------------------------------------------------
+// Enums — workers
+// ---------------------------------------------------------------------------
+
+/// Worker status (GDD sections 35 and 101). Only `IDLE` and `WORKING` are
+/// produced by the MVP; the rest are reserved by GDD sections 35, 101 and 112.
+enum WorkerStatus {
+  IDLE
+  WORKING
+  TRAVELING
+  UNAVAILABLE
+  RESTING
+  INJURED
+}
+
+// ---------------------------------------------------------------------------
+// Enums — tasks
+// ---------------------------------------------------------------------------
+
+/// Operations a worker executes with machinery (GDD sections 111 and 137, plus
+/// the clearing of GDD section 10).
+enum TaskOperation {
+  PLOW
+  CULTIVATE
+  SEED
+  HARVEST
+  FELL
+  REPLANT
+  CLEAR_LAND
+}
+
+/// Task status (GDD section 111).
+enum TaskStatus {
+  IN_PROGRESS
+  COMPLETED
+  CANCELED
+}
+
+// ---------------------------------------------------------------------------
+// Enums — farm and storage
+// ---------------------------------------------------------------------------
+
+/// Buildings of the catalogue: the four of GDD section 116 plus the wood store of
+/// GDD section 136, which is a separate building and not a flag on the silo.
+enum BuildingType {
+  GARAGE
+  SILO
+  WORKER_HOME
+  WORKSHOP
+  WOOD_STORAGE
+}
+
+/// Fungible resources held in storage, aggregated per farm because they have no
+/// individual identity (plan section 5.4).
+enum StorageResource {
+  WHEAT_LITERS
+  WOOD_M3
+}
+
+// ---------------------------------------------------------------------------
+// Enums — forestry
+// ---------------------------------------------------------------------------
+
+/// Tree species. One species in the MVP (GDD sections 133 and 141).
+enum TreeSpecies {
+  PINE
+}
+
+/// Tree status (GDD sections 130 and 132). `MARKED_FOR_HARVEST` is reserved,
+/// since felling is by batch in the MVP. `FELLED` is a logical deletion and also
+/// reserves the meaning "felled and awaiting transport" for when the forwarder of
+/// GDD section 134 stops being a mere ownership requirement.
+///
+/// There is no `TreeGrowthStage` enum in the database: the stage and the wood
+/// volume are always derived from the age and never stored (plan section 2.2,
+/// resolution of GDD sections 130 and 140). The enum exists in
+/// `shared/domain/enums.ts`, which is where derived values belong.
+enum TreeStatus {
+  STANDING
+  MARKED_FOR_HARVEST
+  FELLED
+}
+
+// ---------------------------------------------------------------------------
+// Enums — player and ledger
+// ---------------------------------------------------------------------------
+
+/// Player status. `IN_DEBT` follows a negative settled balance and blocks
+/// discretionary spending but never selling or assigning tasks, which are the
+/// only source of income. `BANKRUPT` is reserved and never produced: ending the
+/// game of somebody who was offline is not acceptable (plan section 6.6).
+enum PlayerStatus {
+  ACTIVE
+  IN_DEBT
+  BANKRUPT
+}
+
+/// Kinds of ledger entry (plan section 5.3). Single entry with a signed amount:
+/// negative is an outflow for the player. The market, the labour pool and the
+/// land vendor are "the world", so there is no counterparty to model.
+///
+/// Reserved kinds: `OVERDRAFT_INTEREST` (rate zero by default),
+/// `LIQUIDATION` (aggregate entry of a forced liquidation), `COMPENSATION` (an
+/// incident is compensated with an entry, never by rewinding the clock) and
+/// `SEED_PURCHASE` (GDD section 117 does not cost the seed although the seeder
+/// sows from nothing; activating it would worsen an already loss making first
+/// cycle). `HARVEST_WASTE` carries no money: it exists so the return summary can
+/// explain the grain that did not fit in the silo (GDD sections 83 and 97).
+enum LedgerType {
+  LAND_PURCHASE
+  LAND_SALE
+  BUILDING_PURCHASE
+  BUILDING_SALE
+  MACHINE_PURCHASE
+  MACHINE_SALE
+  MACHINE_REPAIR
+  CROP_SALE
+  WOOD_SALE
+  HARVEST_WASTE
+  WORKER_WAGES
+  MACHINE_MAINTENANCE
+  MACHINE_OPERATING
+  OVERDRAFT_INTEREST
+  LIQUIDATION
+  COMPENSATION
+  SEED_PURCHASE
+  /// Opening entry of a new player, for the 160 000 of GDD section 117. The ledger
+  /// is auditable because the sum of its entries equals the balance, so the opening
+  /// balance needs an entry or the invariant breaks on the first player. Appended
+  /// last because `ALTER TYPE ... ADD VALUE` appends; added by migration
+  /// 20260811215755_ledger_type_starting_capital.
+  STARTING_CAPITAL
+}
+
+// ---------------------------------------------------------------------------
+// Enums — simulation
+// ---------------------------------------------------------------------------
+
+/// Kinds of row in the outbox, which is the authoritative list of what must
+/// happen (plan section 6.4). The recurring `sim.reconcile` job has no row: it is
+/// a periodic job of the queue that enqueues everything already due.
+enum ScheduledEventKind {
+  TASK_COMPLETE
+  FIELD_ADVANCE_PHASE
+  MACHINE_REPAIR_COMPLETE
+  PLAYER_SETTLE_SWEEP
+  WORKER_POOL_REFRESH
+  FOREST_NOTIFY_MILESTONE
+}
+
+/// Lifecycle of an outbox row. Not present in `shared/domain/enums.ts`, which has
+/// no equivalent set; see docs/handoff/NOTES-w2d.md, where the addition is
+/// requested with exactly these three values.
+///
+/// A pending row with a due instant in the past is simply late, which is what the
+/// reconciliation sweep looks for. A paused world parks the row instead of
+/// re-enqueueing it, and parking is the absence of an alarm clock
+/// (`enqueuedAtRealMs` null), not a status of its own.
+enum ScheduledEventStatus {
+  PENDING
+  PROCESSED
+  CANCELED
+}
+
+/// Tags of the events the server pushes to the client, ordered by a per player
+/// sequence (plan section 7). `UPSERTED` means "this is the current state of this
+/// entity, apply it whole": the client is a cache and never an authority, so a
+/// full replacement is both simpler and idempotent.
+///
+/// `CLOCK` is transport only. It is a member of the set because the set mirrors
+/// `shared/domain/enums.ts` exactly, but no row of `game_events` ever carries it:
+/// it is periodic, has no domain change and consumes no sequence number.
+enum GameEventType {
+  CLOCK
+  PLAYER_UPSERTED
+  LEDGER_APPENDED
+  INVENTORY_UPSERTED
+  CHUNK_PATCHED
+  FARM_UPSERTED
+  BUILDING_UPSERTED
+  BUILDING_REMOVED
+  FIELD_UPSERTED
+  FIELD_REMOVED
+  MACHINE_UPSERTED
+  MACHINE_REMOVED
+  WORKER_UPSERTED
+  WORKER_REMOVED
+  WORKER_POOL_UPSERTED
+  TASK_UPSERTED
+  FOREST_PLOT_UPSERTED
+  FOREST_PLOT_REMOVED
+  TREES_UPSERTED
+  NOTICE
+}
+
+// ---------------------------------------------------------------------------
+// World and clock
+// ---------------------------------------------------------------------------
+
+/// The world and the anchor of its clock.
+///
+/// The multiplier is rational so that the conversion between real and game time
+/// is invertible without floating point error (plan section 6.1):
+///
+///   gameMsAt(w, realMs)  = anchorGameMs + floorDiv((realMs - anchorRealMs) * rateNum, rateDen)
+///   realMsFor(w, gameMs) = anchorRealMs + ceilDiv((gameMs - anchorGameMs) * rateDen, rateNum)
+///
+/// `rateNum = 0` is a paused world, the only admissible mitigation for a
+/// prolonged outage: the clock never rewinds, and an incident is compensated with
+/// a ledger entry instead.
+///
+/// Changing the multiplier is a domain operation (`retimeWorld`), not a
+/// configuration update: it freezes the past under the previous rate, re-anchors,
+/// increments `scheduleEpoch` and reschedules the jobs inside the horizon. A
+/// trigger in the initial migration rejects any change of rate that does not
+/// re-anchor and increment the epoch.
+model World {
+  id String @id @default(uuid(7)) @db.Uuid
+
+  /// Seed of the deterministic terrain generator (GDD section 5). Unique so that
+  /// the seed script can upsert on it and remain idempotent; one world per seed
+  /// is also the whole of the MVP.
+  seed Int @unique
+
+  /// Persisted so that start-up can abort when the constants of shared/config no
+  /// longer match what the stored coordinates were generated with. Without them,
+  /// tuning the noise could turn a cell that is already part of a field into
+  /// water, and changing the chunk size would silently invalidate every stored
+  /// coordinate (plan section 5.1).
+  generatorVersion Int
+  chunkSize        Int
+
+  anchorRealMs  BigInt
+  anchorGameMs  BigInt
+  rateNum       Int
+  rateDen       Int
+  /// Incremented on every re-anchoring. A scheduled event carries the epoch it
+  /// was written under, so a stale job is discarded instead of firing early.
+  scheduleEpoch Int    @default(0)
+
+  createdAtRealMs BigInt
+
+  players      Player[]
+  chunks       Chunk[]
+  trees        Tree[]
+  timeSegments WorldTimeSegment[]
+
+  @@map("worlds")
+}
+
+/// Insert-only record of the intervals of world time lived under one multiplier,
+/// written by `retimeWorld` before re-anchoring (plan section 6.1).
+///
+/// It is what makes a past interval reinterpretable after a rate change: the
+/// economic integrals are computed in game time and do not need it, but any
+/// audit that has to map a game interval back to wall-clock time does. An UPDATE
+/// trigger in the initial migration keeps the record insert-only.
+model WorldTimeSegment {
+  id      String @id @default(uuid(7)) @db.Uuid
+  worldId String @db.Uuid
+  /// Monotonic per world, so segments have a total order independent of clocks.
+  seq     Int
+
+  fromGameMs BigInt
+  toGameMs   BigInt
+  fromRealMs BigInt
+  toRealMs   BigInt
+  rateNum    Int
+  rateDen    Int
+
+  world World @relation(fields: [worldId], references: [id], onDelete: Restrict)
+
+  @@unique([worldId, seq])
+  @@index([worldId, fromGameMs])
+  @@map("world_time_segments")
+}
+
+// ---------------------------------------------------------------------------
+// Player
+// ---------------------------------------------------------------------------
+
+/// A player. The row every write path has to touch, which is precisely the
+/// serialisation the design looks for: `advancePlayer` locks it, the ledger
+/// sequence is incremented under that lock, and `balanceAfter` is stored so the
+/// ledger is self auditable (plan sections 5.3 and 6.3).
+model Player {
+  id      String @id @default(uuid(7)) @db.Uuid
+  worldId String @db.Uuid
+
+  /// Stored already lowercased by the application. Unique across worlds, because
+  /// login happens before a world is known.
+  email        String @unique
+  passwordHash String
+  displayName  String
+
+  /// `IN_DEBT` follows the settled balance; it is a materialised reading of it,
+  /// not an independent truth (plan section 6.6).
+  status PlayerStatus @default(ACTIVE)
+
+  /// Settled balance. Reads project it forward with `projectBalance`; writes
+  /// settle first with `settleAccruals` and compare against this column, never
+  /// against the projection. It may legitimately go negative, which is why there
+  /// is no CHECK on it: offline accrual of holding costs is expected to overdraw
+  /// the account in the first cycle (GDD sections 118 and 119).
+  balance Decimal @default(0) @db.Decimal(20, 4)
+
+  /// Start of the player's own day counter (GDD section 61, plan section 2.2).
+  startedAtGameMs   BigInt
+  /// Upper bound of the interval whose continuous costs are already settled.
+  /// Advanced by a conditional monotonic update, which is the first of the three
+  /// independent defences against double charging (plan section 6.3).
+  lastAccrualGameMs BigInt
+  lastLoginGameMs   BigInt
+  /// Separate from the login mark on purpose: reloading the page must not erase
+  /// the pending return summary (plan section 6.7).
+  lastSummaryGameMs BigInt
+
+  /// Monotonic per player sequences. `ledgerSeq` gives the ledger a total order
+  /// and breaks timestamp ties; `eventSeq` is the one the client checks for gaps
+  /// before deciding between replay and full snapshot (plan section 7).
+  ledgerSeq Int @default(0)
+  eventSeq  Int @default(0)
+
+  /// Origin assigned by the deterministic spawn allocator, kept so that the
+  /// allocator can honour the minimum separation between players without
+  /// re-deriving it from owned cells, which a sale would falsify (plan section
+  /// 2.2, SPAWN_MIN_DISTANCE_CHUNKS). Null until the origin is assigned.
+  spawnCellX Int?
+  spawnCellY Int?
+
+  createdAtRealMs BigInt
+
+  world             World                @relation(fields: [worldId], references: [id], onDelete: Restrict)
+  refreshTokens     RefreshToken[]
+  ownedCells        WorldCell[]
+  farms             Farm[]
+  buildings         Building[]
+  fields            Field[]
+  machines          Machine[]
+  workers           Worker[]
+  workerCandidates  WorkerCandidate[]
+  tasks             Task[]
+  forestPlots       ForestPlot[]
+  trees             Tree[]
+  ledgerEntries     LedgerEntry[]
+  scheduledEvents   ScheduledEvent[]
+  gameEvents        GameEvent[]
+  idempotentRequest RequestIdempotency[]
+
+  @@index([worldId])
+  @@map("players")
+}
+
+/// Rotating refresh token (stack section 6). Only the hash is stored, so a dump
+/// of the table does not hand over live sessions, and rotation is recorded as a
+/// chain through `replacedByTokenId`: a reused token whose successor exists is
+/// the signature of a stolen cookie.
+model RefreshToken {
+  id       String @id @default(uuid(7)) @db.Uuid
+  playerId String @db.Uuid
+
+  tokenHash         String  @unique
+  /// Identifier of the token that replaced this one on rotation.
+  replacedByTokenId String? @db.Uuid
+
+  issuedAtRealMs  BigInt
+  expiresAtRealMs BigInt
+  revokedAtRealMs BigInt?
+
+  /// Trace only, for a session list in the interface. Never used in a decision.
+  userAgent String?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@index([expiresAtRealMs])
+  @@map("refresh_tokens")
+}
+
+// ---------------------------------------------------------------------------
+// Chunks and cells
+// ---------------------------------------------------------------------------
+
+/// Header of a chunk. The terrain is not stored: it is regenerated from the seed
+/// and the coordinates (GDD sections 7 and 58).
+///
+/// `version` is what allows answering `unchanged` to an up to date client and,
+/// above all, what allows caching the overlay of modifications in Redis with the
+/// version inside the key: modifying a cell changes the key, so nothing has to be
+/// invalidated and the whole class of invalidation races disappears (plan section
+/// 5.1). Multi-chunk edits take these rows in ascending identifier order so the
+/// counter is incremented coherently (plan section 5.4).
+model Chunk {
+  id      String @id @default(uuid(7)) @db.Uuid
+  worldId String @db.Uuid
+  chunkX  Int
+  chunkY  Int
+
+  version         Int    @default(0)
+  updatedAtRealMs BigInt
+
+  world World       @relation(fields: [worldId], references: [id], onDelete: Restrict)
+  cells WorldCell[]
+
+  @@unique([worldId, chunkX, chunkY])
+  @@map("chunks")
+}
+
+/// A modified cell. Only modified cells exist as rows (GDD section 58);
+/// everything else is regenerated from the seed, which is what makes a virtually
+/// infinite world affordable.
+///
+/// The world is reached through the chunk and not with a second foreign key: the
+/// chunk row must exist anyway, because modifying a cell increments its version.
+///
+/// No geospatial extension is used. All geometry is grid aligned and the chunk
+/// key is the natural spatial index; rectangular queries derive the covered
+/// chunks instead of ranging over `cellX`/`cellY`, which a btree would only
+/// exploit on its first column (plan section 5.1).
+model WorldCell {
+  id      String @id @default(uuid(7)) @db.Uuid
+  worldId String @db.Uuid
+  chunkX  Int
+  chunkY  Int
+  /// Index inside the chunk, row major: `y * chunkSize + x`. The upper bound is
+  /// not a CHECK because the size lives on the world row; start-up verifies it
+  /// against the constants of shared/config.
+  idx     Int
+
+  /// Absolute cell coordinates. Denormalised from the chunk key so that a tree,
+  /// a building footprint or a client patch can be addressed without recomputing
+  /// the division every time.
+  cellX Int
+  cellY Int
+
+  /// Witness of what the generator produced when the row was written. Without it
+  /// a change of noise parameters could silently turn a cell that is already part
+  /// of a field into water (plan section 5.1).
+  generatedTerrain TerrainType
+  /// Terrain after clearing a forest (GDD section 10). Null while the generated
+  /// terrain still holds.
+  terrainOverride  TerrainType?
+
+  ownerPlayerId String? @db.Uuid
+  landUse       LandUse @default(NONE)
+
+  /// Exactly one of these is set, and only for the matching `landUse`. The
+  /// exclusivity of GDD section 15 is an intra-row CHECK in the initial
+  /// migration, not an application rule.
+  fieldId      String? @db.Uuid
+  forestPlotId String? @db.Uuid
+  buildingId   String? @db.Uuid
+
+  /// Set once the natural trees of the cell have been generated, so that deleting
+  /// and recreating a forest plot cannot farm free trees (plan section 5.1).
+  naturalTreeConsumed Boolean @default(false)
+
+  updatedAtRealMs BigInt
+
+  chunk      Chunk       @relation(fields: [worldId, chunkX, chunkY], references: [worldId, chunkX, chunkY], onDelete: Restrict)
+  owner      Player?     @relation(fields: [ownerPlayerId], references: [id], onDelete: Restrict)
+  field      Field?      @relation(fields: [fieldId], references: [id], onDelete: Restrict)
+  forestPlot ForestPlot? @relation(fields: [forestPlotId], references: [id], onDelete: Restrict)
+  building   Building?   @relation(fields: [buildingId], references: [id], onDelete: Restrict)
+
+  @@unique([worldId, chunkX, chunkY, idx])
+  @@index([worldId, chunkX, chunkY])
+  @@index([ownerPlayerId])
+  @@index([fieldId])
+  @@index([forestPlotId])
+  @@index([buildingId])
+  @@map("world_cells")
+}
+
+// ---------------------------------------------------------------------------
+// Farm, buildings
+// ---------------------------------------------------------------------------
+
+/// A farm (GDD sections 23 and 31). It holds the fungible stock, because grain
+/// and wood have no individual identity and aggregating them avoids inventing a
+/// micro decision the GDD never asks for; machines and workers, which do have
+/// identity and location, are counted per building instead (plan section 5.4).
+///
+/// `reserved...` is capacity committed by tasks in flight: a harvest reserves
+/// room in the silo when it is assigned, so an overflow is an actionable
+/// rejection instead of a silent loss at completion (GDD sections 83 and 97).
+///
+/// The capacities are maintained by a trigger over the storage buildings of the
+/// farm, and a CHECK keeps stock plus reservation inside capacity as a safety
+/// net. The net is deliberately not the primary defence: a constraint violation
+/// inside a queue job produces endless retries, so the application never
+/// delegates a predictable business case to it (plan section 5.4).
+model Farm {
+  id       String @id @default(uuid(7)) @db.Uuid
+  playerId String @db.Uuid
+  name     String
+
+  storedWheatLiters   Int @default(0)
+  reservedWheatLiters Int @default(0)
+  capacityWheatLiters Int @default(0)
+
+  storedWoodDm3   Int @default(0)
+  reservedWoodDm3 Int @default(0)
+  capacityWoodDm3 Int @default(0)
+
+  createdAtGameMs BigInt
+  disposedGameMs  BigInt?
+
+  player      Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  buildings   Building[]
+  fields      Field[]
+  machines    Machine[]
+  workers     Worker[]
+  forestPlots ForestPlot[]
+  tasks       Task[]
+
+  @@index([playerId])
+  @@map("farms")
+}
+
+/// A building (GDD sections 25 to 29 and 116). The footprint is a rectangle of
+/// cells, and the cells themselves carry `buildingId`, so the exclusivity of GDD
+/// section 15 is enforced where the land is.
+///
+/// The capacities are a snapshot of the catalogue at construction time.
+/// Redundant with `shared/config/buildings.ts` on purpose: the hard restrictions
+/// of GDD sections 96 and 108 are a CHECK against a counter in this same row, and
+/// a CHECK cannot read a constant that lives in the application. The counters are
+/// maintained by triggers inside the same transaction, so two concurrent
+/// purchases with one free slot serialise on this row and the second one fails
+/// (plan section 5.4).
+model Building {
+  id       String       @id @default(uuid(7)) @db.Uuid
+  farmId   String       @db.Uuid
+  playerId String       @db.Uuid
+  type     BuildingType
+
+  /// North west corner of the footprint, in absolute cell coordinates, and its
+  /// size. Kept here as well as on the cells because the placement preview and
+  /// the demolition path both need the rectangle without reading 48 cells.
+  originCellX Int
+  originCellY Int
+  widthCells  Int
+  heightCells Int
+
+  /// Price actually paid, excluding land: the cells of GDD section 116 are a
+  /// separate `LAND_PURCHASE` entry when they were not already owned (plan
+  /// section 2.2). Kept so resale value stays auditable.
+  purchasePrice Decimal @db.Decimal(20, 4)
+
+  /// Capacity snapshot by kind. A garage uses machines (GDD section 96), a worker
+  /// home uses workers (GDD section 108), a silo and a wood store use storage
+  /// units of `storageResource` (GDD sections 27 and 136), and a workshop uses
+  /// none: what it provides is repair access (GDD sections 29 and 93).
+  capacityMachines     Int              @default(0)
+  capacityWorkers      Int              @default(0)
+  capacityStorageUnits Int              @default(0)
+  storageResource      StorageResource?
+
+  /// Live occupancy, maintained by trigger. Only machines that are not disposed
+  /// of and workers that are not terminated count.
+  machineCount Int @default(0)
+  workerCount  Int @default(0)
+
+  builtAtGameMs  BigInt
+  disposedGameMs BigInt?
+
+  farm     Farm        @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  player   Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  cells    WorldCell[]
+  machines Machine[]
+  workers  Worker[]
+
+  @@index([farmId])
+  @@index([playerId, type])
+  @@map("buildings")
+}
+
+// ---------------------------------------------------------------------------
+// Fields
+// ---------------------------------------------------------------------------
+
+/// A field (GDD section 85). Its geometry is not an array of cells: the cell
+/// carries the foreign key, and `cellCount` is the denormalised area the duration
+/// and yield formulas need (plan section 5.2). Contiguity is the one rule no
+/// declarative constraint expresses, so it lives in application logic as a
+/// breadth first search over the selection.
+///
+/// The cycle state lives only here and never on the cell, which resolves GDD
+/// section 13 against GDD sections 76 and 85: duplicating it per cell would
+/// multiply the cost of every transition by between 250 and 2000.
+///
+/// Each lazily accrued attribute carries its own timestamp, not one shared by the
+/// row, so that settling one does not discard the elapsed time of the other (plan
+/// section 6.5).
+model Field {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  playerId String  @db.Uuid
+  /// Farm that serves the field and destination of its harvest, which resolves
+  /// GDD section 31 against GDD section 83. Null while the player has no farm.
+  farmId   String? @db.Uuid
+  name     String
+
+  cellCount Int
+
+  cropId         CropId?
+  cropCycleState CropCycleState @default(VIRGIN)
+  soilCondition  SoilCondition  @default(UNTOUCHED)
+
+  /// Fertility in basis points, 10000 at creation (GDD sections 77 and 84, where
+  /// the narrative cycle starts at 100 %). It drops by
+  /// `fertilityDrainPerCycleBp` on each harvest and recovers slowly while the
+  /// field lies fallow, which is the restoration route GDD section 77 admits and
+  /// without which the MVP is irreversible (plan section 2.2).
+  fertilityBp                  Int    @default(10000)
+  fertilityUpdatedAtGameMs     BigInt
+  /// Weeds in basis points, 0 at creation (GDD sections 78 and 84). Continuous,
+  /// with nothing triggered when a threshold is crossed, so it is settled lazily
+  /// on every state change and only consumed when the yield is computed.
+  weedLevelBp                  Int    @default(0)
+  weedLevelUpdatedAtGameMs     BigInt
+  /// Fertilisation in basis points (GDD section 79). Modelled and settled, with
+  /// the multiplier fixed at 1.0 in the MVP: the column exists from the start to
+  /// avoid a schema migration.
+  fertilizationBp              Int    @default(0)
+  fertilizationUpdatedAtGameMs BigInt
+
+  /// Instant the current `cropCycleState` was entered.
+  stateEnteredAtGameMs BigInt
+  /// Start of the growth timeline. The phase and the growth progress are
+  /// projected from it, the crop and the clock; the scheduled job only
+  /// materialises and notifies the same result (plan section 6.5).
+  seededAtGameMs       BigInt?
+
+  /// Reservation column: the conditional update that rules out two tasks on the
+  /// same field writes it, and the unique constraint is the database level
+  /// backstop (plan section 5.4).
+  currentTaskId String? @unique @db.Uuid
+
+  createdAtGameMs BigInt
+  disposedGameMs  BigInt?
+
+  player      Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  farm        Farm?       @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  currentTask Task?       @relation("FieldCurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
+  cells       WorldCell[]
+  tasks       Task[]      @relation("TaskTargetField")
+
+  @@index([playerId])
+  @@index([farmId])
+  @@map("fields")
+}
+
+// ---------------------------------------------------------------------------
+// Machinery
+// ---------------------------------------------------------------------------
+
+/// A machine (GDD section 98). Prices per hour, work speed, work width, capacity
+/// and wear rate are not stored: they come from `shared/config/machines.ts`,
+/// indexed by `type`.
+///
+/// `assignedWorkerId` of GDD section 98 does not exist: the authoritative link
+/// between worker and machine is the task, and two pointers for one fact
+/// desynchronise (plan section 5.2). `currentTaskId` does exist, because it is
+/// the reservation column the conditional update writes to rule out a double
+/// booking (plan section 5.4). It is not unique: one task legitimately reserves a
+/// powered machine and an implement.
+model Machine {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  playerId String  @db.Uuid
+  /// Ownership, mandatory. Resolves the ambiguous `location` of GDD section 98
+  /// and is what the trigger of GDD section 108 compares against the farm of the
+  /// worker.
+  farmId   String  @db.Uuid
+  /// Physical location, assigned by the server so that garage capacity can be
+  /// checked per building (GDD section 96). Null only while a machine is not
+  /// stored, which the MVP does not produce.
+  garageId String? @db.Uuid
+
+  type MachineType
+
+  /// Condition in basis points (GDD section 93). Wear is applied per event,
+  /// prorated over hours worked; degradation while idle is outside the MVP (GDD
+  /// sections 93 and 99), which is why the timestamp is only moved when work is
+  /// accounted for.
+  conditionBp              Int    @default(10000)
+  conditionUpdatedAtGameMs BigInt
+
+  status             MachineStatus @default(IDLE)
+  currentTaskId      String?       @db.Uuid
+  /// Instant the scheduled repair completes, for the countdown in the interface.
+  /// Repair occupies the machine (`IN_REPAIR`), requires a workshop and consumes
+  /// no worker (plan section 2.2).
+  repairEndsAtGameMs BigInt?
+
+  /// Price actually paid, kept so resale value stays auditable even if the
+  /// catalogue is retuned.
+  purchasePrice Decimal @db.Decimal(20, 4)
+
+  acquiredGameMs BigInt
+  disposedGameMs BigInt?
+
+  player       Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  farm         Farm          @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  garage       Building?     @relation(fields: [garageId], references: [id], onDelete: Restrict)
+  currentTask  Task?         @relation("MachineCurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
+  taskMachines TaskMachine[]
+
+  @@index([playerId, type])
+  @@index([farmId])
+  @@index([garageId])
+  @@index([currentTaskId])
+  @@map("machines")
+}
+
+// ---------------------------------------------------------------------------
+// Workers
+// ---------------------------------------------------------------------------
+
+/// A worker (GDD section 101), without the `assignedMachineId` cross pointer.
+///
+/// Skill is a scalar and not a map, against the suggestion of GDD section 139:
+/// adding a column to PostgreSQL is instantaneous, whereas a JSON field costs
+/// type safety permanently on the hot path of the duration calculation (plan
+/// section 5.2).
+///
+/// The home is mandatory, which is what makes the housing restriction of GDD
+/// section 108 a per building CHECK. That is stronger than the per farm aggregate
+/// of the GDD formula, and the aggregate is satisfied by construction.
+model Worker {
+  id       String @id @default(uuid(7)) @db.Uuid
+  playerId String @db.Uuid
+  farmId   String @db.Uuid
+  homeId   String @db.Uuid
+
+  name    String
+  skillBp Int
+
+  /// Salary per game hour, charged always, idle or working (GDD sections 36 and
+  /// 107). Stored per worker because it is the outcome of the procedural pool of
+  /// GDD section 102 and not a catalogue value.
+  salaryPerGameHour Decimal @db.Decimal(20, 4)
+
+  status        WorkerStatus @default(IDLE)
+  /// Reservation column, unique: a worker has at most one task and a task has
+  /// exactly one worker (GDD section 104, no multitasking in the MVP).
+  currentTaskId String?      @unique @db.Uuid
+
+  /// Completed tasks, which is what drives skill progression (GDD sections 103
+  /// and 105).
+  completedTaskCount Int @default(0)
+
+  hiredGameMs      BigInt
+  terminatedGameMs BigInt?
+
+  player      Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  farm        Farm     @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  home        Building @relation(fields: [homeId], references: [id], onDelete: Restrict)
+  currentTask Task?    @relation("WorkerCurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
+  tasks       Task[]   @relation("TaskWorker")
+
+  @@index([playerId, status])
+  @@index([farmId])
+  @@index([homeId])
+  @@map("workers")
+}
+
+/// Candidate in the hiring pool (GDD section 102). The pool is per player, with
+/// `region` reserved: a global pool would introduce contention between players
+/// that the MVP avoids explicitly (plan section 5.2).
+///
+/// A hired or expired candidate is kept with `removedGameMs` set instead of being
+/// deleted, so that the refresh of GDD section 102 is auditable and the same row
+/// can never be hired twice.
+model WorkerCandidate {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  playerId String  @db.Uuid
+  region   String?
+
+  name                    String
+  skillBp                 Int
+  askingSalaryPerGameHour Decimal @db.Decimal(20, 4)
+
+  listedAtGameMs BigInt
+  removedGameMs  BigInt?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@map("worker_candidates")
+}
+
+// ---------------------------------------------------------------------------
+// Tasks
+// ---------------------------------------------------------------------------
+
+/// A task (GDD section 111). The only authoritative link between a worker and the
+/// machines in use, and the only place a duration is fixed (GDD section 91).
+///
+/// `scheduledEndGameMs` and `endedGameMs` are distinct because cancellation is
+/// not a completion: nothing is refunded, wear is applied prorated, and the
+/// operating cost integral must stop at the real end (plan section 2.2,
+/// resolution of GDD sections 106 and 111).
+model Task {
+  id       String @id @default(uuid(7)) @db.Uuid
+  playerId String @db.Uuid
+  workerId String @db.Uuid
+
+  operation TaskOperation
+  status    TaskStatus    @default(IN_PROGRESS)
+
+  /// At most one target. `CLEAR_LAND` has neither, because it targets a set of
+  /// cells (GDD section 10); the CHECK in the initial migration only forbids
+  /// having both.
+  targetFieldId      String? @db.Uuid
+  targetForestPlotId String? @db.Uuid
+  /// Farm whose storage receives the produce, chosen when the task is assigned so
+  /// that a player with several farms has an explicit destination (plan section
+  /// 2.2, resolution of GDD sections 31 and 83).
+  destinationFarmId  String? @db.Uuid
+
+  cropId CropId?
+
+  /// Cells or trees at the start, which is the divisor of the duration formula of
+  /// GDD sections 91 and 135 and, afterwards, audit.
+  unitsAtStart            Int
+  /// Effective work speed used to fix the duration, in thousandths of a unit per
+  /// game hour. An integer for the same reason as every percentage, and kept as
+  /// audit because GDD section 89 warns that the unit of `workSpeed` will be
+  /// recalculated, so historical rows stay reinterpretable (plan section 5.2).
+  effectiveWorkSpeedMilli Int
+
+  /// Storage reserved on assignment, in the stored unit of the resource: litres
+  /// for a harvest, cubic decimetres for a fell. Released on completion or
+  /// cancellation.
+  reservedStorageUnits Int?
+
+  startGameMs        BigInt
+  scheduledEndGameMs BigInt
+  endedGameMs        BigInt?
+
+  cancelable Boolean @default(true)
+  /// Identifier of the queue job, so the scheduled work can be removed on
+  /// cancellation (GDD section 106). Never authoritative: the outbox row is.
+  jobId      String?
+
+  player           Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  worker           Worker        @relation("TaskWorker", fields: [workerId], references: [id], onDelete: Restrict)
+  targetField      Field?        @relation("TaskTargetField", fields: [targetFieldId], references: [id], onDelete: Restrict)
+  targetForestPlot ForestPlot?   @relation("TaskTargetForestPlot", fields: [targetForestPlotId], references: [id], onDelete: Restrict)
+  destinationFarm  Farm?         @relation(fields: [destinationFarmId], references: [id], onDelete: Restrict)
+  machines         TaskMachine[]
+  reservedByField  Field?        @relation("FieldCurrentTask")
+  reservedByWorker Worker?       @relation("WorkerCurrentTask")
+  reservedByPlot   ForestPlot?   @relation("ForestPlotCurrentTask")
+  reservedMachines Machine[]     @relation("MachineCurrentTask")
+
+  @@index([playerId, status])
+  @@index([status, scheduledEndGameMs])
+  @@index([workerId])
+  @@index([targetFieldId])
+  @@index([targetForestPlotId])
+  @@map("tasks")
+}
+
+/// Machines taking part in a task. This table plus `Task.workerId` is the whole
+/// of the worker to machine link (plan section 5.2), and `role` records which
+/// machine set the pace and which one was towed, so a historical duration stays
+/// explainable after a catalogue change.
+///
+/// A trigger in the initial migration rejects a machine whose farm is not the
+/// farm of the worker of the task, which is the restriction of GDD section 108.
+model TaskMachine {
+  taskId    String      @db.Uuid
+  machineId String      @db.Uuid
+  role      MachineRole
+
+  task    Task    @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  machine Machine @relation(fields: [machineId], references: [id], onDelete: Restrict)
+
+  @@id([taskId, machineId])
+  @@index([machineId])
+  @@map("task_machines")
+}
+
+// ---------------------------------------------------------------------------
+// Forestry
+// ---------------------------------------------------------------------------
+
+/// A forest plot (GDD sections 129 and 140). Geometry as in `Field`: the cells
+/// carry the foreign key. Unlike a field it has no cycle state of its own,
+/// because the state lives in each tree (GDD section 129).
+model ForestPlot {
+  id       String  @id @default(uuid(7)) @db.Uuid
+  playerId String  @db.Uuid
+  /// Farm that serves the plot and destination of the felled wood.
+  farmId   String? @db.Uuid
+  name     String
+
+  cellCount Int
+
+  currentTaskId String? @unique @db.Uuid
+
+  createdAtGameMs BigInt
+  disposedGameMs  BigInt?
+
+  player      Player      @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  farm        Farm?       @relation(fields: [farmId], references: [id], onDelete: Restrict)
+  currentTask Task?       @relation("ForestPlotCurrentTask", fields: [currentTaskId], references: [id], onDelete: SetNull)
+  cells       WorldCell[]
+  trees       Tree[]
+  tasks       Task[]      @relation("TaskTargetForestPlot")
+
+  @@index([playerId])
+  @@index([farmId])
+  @@map("forest_plots")
+}
+
+/// A tree (GDD sections 130 and 140).
+///
+/// Age, growth stage and wood volume are never stored: they are derived from
+/// `plantedAtGameMs`, the species and the clock. Tens of thousands of trees make
+/// a job per tree unviable, and GDD section 131 confirms that nothing is
+/// triggered when a tree matures (plan section 6.5). A tree generated already
+/// grown simply carries a `plantedAtGameMs` in the past.
+///
+/// Felling is a logical deletion: the row stays with `felledAtGameMs` and status
+/// `FELLED`, which keeps the wood produced by a past batch auditable. The
+/// uniqueness of one tree per cell is therefore a partial unique index over the
+/// standing trees, written by hand in the initial migration.
+model Tree {
+  id           String @id @default(uuid(7)) @db.Uuid
+  forestPlotId String @db.Uuid
+  playerId     String @db.Uuid
+  /// The cell is addressed by absolute coordinates and not by a foreign key to
+  /// `world_cells`: a tree exists on a generated forest cell that may have no row
+  /// yet, and forcing one would persist cells that were never modified.
+  worldId      String @db.Uuid
+  cellX        Int
+  cellY        Int
+
+  species TreeSpecies @default(PINE)
+
+  plantedAtGameMs BigInt
+  status          TreeStatus @default(STANDING)
+  felledAtGameMs  BigInt?
+
+  /// True for the trees the world generated when the forest was first bought,
+  /// false for replanted ones (GDD sections 130 and 137).
+  naturallyGenerated Boolean
+
+  forestPlot ForestPlot @relation(fields: [forestPlotId], references: [id], onDelete: Restrict)
+  player     Player     @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  world      World      @relation(fields: [worldId], references: [id], onDelete: Restrict)
+
+  @@index([forestPlotId, status])
+  @@index([playerId])
+  @@index([worldId, cellX, cellY])
+  @@map("trees")
+}
+
+// ---------------------------------------------------------------------------
+// Ledger
+// ---------------------------------------------------------------------------
+
+/// An immutable ledger entry (plan section 5.3). Single entry with a signed
+/// amount: negative is an outflow for the player. The market, the labour pool and
+/// the land vendor are "the world", so modelling fictitious counterparties would
+/// add nothing; what is kept from accounting rigour is immutability and
+/// verifiability.
+///
+/// `balanceAfter` is redundant on purpose: it makes the ledger self auditable
+/// with an executable test, lets the history be drawn without window functions
+/// and, above all, forces every write path through the player row.
+///
+/// The reference to the origin is polymorphic and has no foreign key: an
+/// immutable record must not point with a foreign key at entities that are
+/// dismissed (GDD section 109), sold or merged (GDD section 22), because that
+/// would force a choice between destroying the trail and forbidding deletion.
+/// Logical deletion in the referenced entities is the compensation.
+///
+/// `idempotencyKey` is the detail that is easiest to forget and most expensive to
+/// omit: the queue delivers at least once, and a retry of "charge the wages of
+/// this interval" without a key duplicates the charge. An UPDATE trigger keeps
+/// the table append-only.
+model LedgerEntry {
+  id       String @id @default(uuid(7)) @db.Uuid
+  playerId String @db.Uuid
+  /// Monotonic per player, incremented under the same lock as the balance. Gives
+  /// a total order and breaks ties between entries with the same instant.
+  seq      Int
+
+  type         LedgerType
+  amount       Decimal    @db.Decimal(20, 4)
+  balanceAfter Decimal    @db.Decimal(20, 4)
+  atGameMs     BigInt
+
+  refType String?
+  refId   String?
+  meta    Json?
+
+  idempotencyKey String
+
+  createdAtRealMs BigInt
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, seq])
+  @@unique([playerId, idempotencyKey])
+  @@index([playerId, atGameMs])
+  @@index([playerId, type, atGameMs])
+  @@map("ledger_entries")
+}
+
+// ---------------------------------------------------------------------------
+// Simulation
+// ---------------------------------------------------------------------------
+
+/// A row of the outbox (plan section 6.4). PostgreSQL holds the authoritative
+/// list of what must happen; Redis only holds alarm clocks for the subset inside
+/// the scheduling horizon. The row is inserted inside the domain transaction and
+/// enqueued after the commit, never inside it.
+///
+/// The payload is minimal by rule: identifiers, due instant and epoch, never
+/// amounts, quantities or durations, which would have been computed in the past.
+/// Every handler re-checks the due instant and re-enqueues without effect when
+/// the game clock has not reached it.
+model ScheduledEvent {
+  id       String             @id @default(uuid(7)) @db.Uuid
+  playerId String             @db.Uuid
+  kind     ScheduledEventKind
+
+  /// Polymorphic reference to the subject, with no foreign key, for the same
+  /// reason as in the ledger: the subject may be logically deleted before the
+  /// event is processed, and the handler has to be able to notice that.
+  refType String?
+  refId   String?
+
+  dueGameMs BigInt
+  status    ScheduledEventStatus @default(PENDING)
+  /// Epoch of the anchor the row was written under. A job carrying a stale epoch
+  /// is discarded instead of firing early (plan section 6.1).
+  epoch     Int
+
+  /// Deterministic key that makes scheduling the same fact twice a no-op. Unique
+  /// among the pending rows only, which is a partial unique index written by hand
+  /// in the initial migration: once processed, the same key may legitimately be
+  /// scheduled again, as happens with every pool refresh.
+  dedupeKey String?
+
+  /// Null while the event is outside the horizon and has no alarm clock in Redis,
+  /// which is also how a paused world parks an event.
+  enqueuedAtRealMs  BigInt?
+  processedAtGameMs BigInt?
+  jobId             String?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([status, dueGameMs])
+  @@index([playerId, status])
+  @@map("scheduled_events")
+}
+
+/// A row of the per player event log that backs the resynchronisation ring (plan
+/// section 7). The client applies `seq = last + 1`, discards anything lower and
+/// enters resynchronisation on a gap, so the sequence is the contract and the
+/// unique constraint on it is not decoration. An UPDATE trigger keeps the log
+/// append-only.
+model GameEvent {
+  id       String @id @default(uuid(7)) @db.Uuid
+  playerId String @db.Uuid
+  seq      Int
+
+  type     GameEventType
+  atGameMs BigInt
+  payload  Json
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, seq])
+  @@index([playerId, atGameMs])
+  @@map("game_events")
+}
+
+/// Persisted response of a request that carried an `Idempotency-Key` header (plan
+/// section 6.3). A double click or a browser retry of a money moving POST must
+/// return the first answer instead of performing the operation twice.
+///
+/// `requestHash` is what distinguishes a retry from a different request that
+/// reuses the key, which is a client error and is reported as such
+/// (`IDEMPOTENCY_KEY_REUSED`). This is the one table that is mutable by design:
+/// the row is inserted when the request starts and completed when it finishes.
+model RequestIdempotency {
+  id       String @id @default(uuid(7)) @db.Uuid
+  playerId String @db.Uuid
+  key      String
+
+  method      String
+  path        String
+  requestHash String
+
+  statusCode   Int?
+  responseBody Json?
+
+  createdAtRealMs   BigInt
+  completedAtRealMs BigInt?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([playerId, key])
+  @@index([createdAtRealMs])
+  @@map("request_idempotency")
+}

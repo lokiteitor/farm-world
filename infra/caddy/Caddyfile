@@ -1,0 +1,39 @@
+# Development reverse proxy.
+#
+# Reproduces the production route table (stack section 7.1) in front of the Nuxt
+# dev server, so that a path that works on :8080 also works once the SPA is a
+# static build. The browser may equally use the Nuxt dev server directly on
+# :3001, which proxies /api and /ws by itself (frontend/nuxt.config.ts).
+#
+# Production uses infra/caddy/Caddyfile.prod, which replaces the SPA upstream
+# with a file server over the built assets.
+
+{
+	admin off
+	auto_https off
+	log {
+		format console
+	}
+}
+
+:80 {
+	encode zstd gzip
+
+	# The API and the per-player WebSocket both live on the backend.
+	handle /api/* {
+		reverse_proxy backend:3000
+	}
+
+	handle /ws* {
+		reverse_proxy backend:3000
+	}
+
+	# /metrics is deliberately not published here: Prometheus scrapes the
+	# backend and the worker directly over the compose network.
+
+	# Everything else is the client. In development that is the dev server,
+	# which needs the WebSocket upgrade for hot module replacement.
+	handle {
+		reverse_proxy frontend:3001
+	}
+}

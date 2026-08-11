@@ -1,0 +1,38 @@
+# Prometheus configuration for the "obs" profile (docker-compose.obs.yml).
+#
+# Observability is available from the first day but not mandatory: Pino, /health
+# and /metrics ship with the service, while Prometheus and Grafana stay behind a
+# compose profile. This resolves the contradiction between stack sections 1 and
+# 7.1 (fixed from the start) and sections 10 and 14 (phase 2, outside the MVP);
+# see docs/erratas-gdd-stack.md.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 30s
+  external_labels:
+    project: farm-world
+    environment: development
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # HTTP service: request latency, WebSocket connections, ledger writes.
+  - job_name: backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['backend:3000']
+        labels:
+          role: api
+
+  # Simulation worker: BullMQ jobs processed and failed, scheduling lag.
+  # The worker exposes its own listener because it has no HTTP surface of its
+  # own; until workflow W3 implements it the target reports as down.
+  - job_name: worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['worker:9464']
+        labels:
+          role: simulation

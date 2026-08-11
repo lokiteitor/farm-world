@@ -1,0 +1,16 @@
+{
+  // Emit project used by `npm run build` and by the Docker build stage.
+  // It compiles only src/, so that dist/server.js and dist/worker.js sit at the
+  // root of dist/ and the runtime image carries no tests and no seed script.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rootDir": "src",
+    "outDir": "dist",
+    "declaration": false,
+    "sourceMap": true,
+    "removeComments": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "coverage", "src/**/__tests__/**", "src/**/*.test.ts"]
+}
