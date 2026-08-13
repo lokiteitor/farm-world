@@ -87,6 +87,22 @@ export interface StartupCheck {
   readonly reading: ClockReading;
   /** True when the configured multiplier differed and the clock was re-anchored. */
   readonly retimed: boolean;
+  /** True when it differed and the re-anchoring was not authorised, so nothing changed. */
+  readonly rateMismatchIgnored: boolean;
+}
+
+/** How the start-up check treats a multiplier that differs from the persisted one. */
+export interface StartupOptions {
+  /**
+   * Whether the process is authorised to re-anchor the world from its own configuration.
+   *
+   * False by default, and that default is the decision of point 3 of ADR-0007: changing the
+   * multiplier is a domain operation, `retimeWorld`, and not a configuration update. With it
+   * true on every boot, a `POST /api/dev/retime` did not survive a restart and two processes
+   * with different environments — the server and the worker, deployed apart — took the world
+   * from each other on every start, silently and without an operator asking for it.
+   */
+  readonly applyRateFromConfig: boolean;
 }
 
 /** A mismatch between the persisted world and the constants of `shared/config`. */
@@ -272,11 +288,16 @@ export class GameClockService {
    * turning a cell that is part of a field into water is worse than refusing to boot
    * (plan section 5.1).
    *
-   * The multiplier is different: it is operations, not data, so a difference between the
-   * configuration and the persisted world is resolved by re-anchoring, which is exactly
-   * what `retimeWorld` is for. The caller reschedules the horizon afterwards.
+   * The multiplier is neither repaired nor a stop: the persisted world wins and the
+   * difference is reported at warning level, because the multiplier is the state of a
+   * running world and the configuration is only what a world is created with. Re-anchoring
+   * from the configuration happens exactly when the operator asks for it, which is
+   * `applyRateFromConfig`; the caller reschedules the horizon afterwards.
    */
-  async verifyOnStartup(configuredRate: ClockRate): Promise<StartupCheck> {
+  async verifyOnStartup(
+    configuredRate: ClockRate,
+    options: StartupOptions = { applyRateFromConfig: false },
+  ): Promise<StartupCheck> {
     const reading = await this.read();
     const world = reading.world;
 
@@ -296,18 +317,26 @@ export class GameClockService {
     const sameRate =
       world.rateNum === configuredRate.rateNum && world.rateDen === configuredRate.rateDen;
     if (sameRate) {
-      return { reading, retimed: false };
+      return { reading, retimed: false, rateMismatchIgnored: false };
     }
 
-    this.logger.info(
-      {
-        persisted: `${world.rateNum}/${world.rateDen}`,
-        configured: `${configuredRate.rateNum}/${configuredRate.rateDen}`,
-      },
-      'configured game rate differs from the persisted one: re-anchoring',
-    );
+    const rates = {
+      persisted: `${world.rateNum}/${world.rateDen}`,
+      configured: `${configuredRate.rateNum}/${configuredRate.rateDen}`,
+    };
+    if (!options.applyRateFromConfig) {
+      this.logger.warn(
+        rates,
+        'configured game rate differs from the persisted one: the world keeps its own, ' +
+          'because changing the multiplier is a domain operation (ADR-0007). Set ' +
+          'GAME_RATE_APPLY_ON_BOOT=true to re-anchor from the configuration',
+      );
+      return { reading, retimed: false, rateMismatchIgnored: true };
+    }
+
+    this.logger.info(rates, 'configured game rate differs from the persisted one: re-anchoring');
     const retime = await this.retimeWorld(configuredRate);
-    return { reading: retime.reading, retimed: true };
+    return { reading: retime.reading, retimed: true, rateMismatchIgnored: false };
   }
 
   /** Never hands out a value below the highest already handed out for this world. */

@@ -16,7 +16,7 @@
 // gives the exhaustiveness a string keyed bus does not.
 
 import { onScopeDispose } from 'vue';
-import { type CellCoordWire, type SelectionPurpose } from '~/shared/index';
+import { type BuildingType, type CellCoordWire, type SelectionPurpose } from '~/shared/index';
 
 // ---------------------------------------------------------------------------
 // Phaser to Vue
@@ -66,12 +66,81 @@ export interface CameraOrder {
   readonly smooth?: boolean;
 }
 
-/** The interaction mode the scene must switch to. Null returns it to inspection. */
+/**
+ * Names of the nine modes of the selection tool (`game/selection/modes.ts`).
+ *
+ * They are written out here instead of imported so that this module keeps depending on
+ * nothing but `shared/`, which is what lets a Phaser scene and a Vue panel both hold it.
+ * The correspondence is not left to trust: `pages/game.vue` declares the table from
+ * `SelectionToolMode` to this union, exhaustive by its type in both directions, so a mode
+ * added on either side stops the compilation.
+ */
+export type SelectionToolModeName =
+  | 'INSPECT'
+  | 'PURCHASE'
+  | 'FIELD_CREATE'
+  | 'FIELD_EXTEND'
+  | 'FIELD_SPLIT'
+  | 'FOREST_PLOT'
+  | 'FELL_AREA'
+  | 'CLEAR_LAND'
+  | 'BUILDING';
+
+/**
+ * The interaction mode the scene must switch to. Null returns it to inspection.
+ *
+ * `purpose` is the shared vocabulary of `SelectionPurpose` and it cannot name every mode:
+ * felling an area and splitting a field have no purpose of their own, so both used to
+ * arrive as the nearest one, which for a felling is `CLEAR_LAND` -- the mode whose per
+ * cell rule requires exactly the opposite, a cell with no standing tree
+ * (`game/selection/rules.ts`). `mode` names the mode when the caller needs that
+ * precision; the tool keeps reading `purpose`, and the page applies `mode` after it.
+ *
+ * The three subject fields are the other half of the same gap. A mode armed from a panel
+ * used to arrive without the field, the plot or the building type it acts on, so the
+ * panel that the confirmation opens received a null subject
+ * (docs/handoff/NOTES-w4g.md 1.2, docs/handoff/NOTES-w5w.md 4.6). They are declared here
+ * and applied by the page, which is the only place that may read a store and reach the
+ * tool at the same time.
+ */
 export interface SelectionMode {
   readonly purpose: SelectionPurpose | null;
+  /** The mode itself, when the purpose cannot name it. */
+  readonly mode?: SelectionToolModeName;
+  /** Field being extended (GDD section 20) or split (GDD section 21). */
+  readonly fieldId?: string | null;
+  /** Forest plot a felling works in (GDD section 135), or the cells are leaving. */
+  readonly forestPlotId?: string | null;
+  /** Building being placed, whose footprint fixes the cell count (GDD section 116). */
+  readonly buildingType?: BuildingType | null;
   /** Cell count the footprint of a building fixes, when the mode places one. */
   readonly fixedWidthCells?: number;
   readonly fixedHeightCells?: number;
+}
+
+/**
+ * Rendering preferences of this browser, as the settings panel keeps them.
+ *
+ * They are not server state and they are not domain state: they are five decisions about
+ * how the canvas draws, persisted in `localStorage` by
+ * `components/panels/settings/preferences.ts`. The event exists because none of the
+ * fifteen original events of this bridge meant "the render settings changed", so the
+ * panel had to fall back to `world:reload`, which rebuilds every chunk to change the
+ * colour of a grid (docs/handoff/NOTES-w4e.md, section 1.2).
+ *
+ * The whole set travels on every change, not a delta. The payload is five scalars, the
+ * scene applies what it owns and ignores the rest, and a receiver that missed one event
+ * is still correct after the next one.
+ */
+export interface RenderPreferences {
+  readonly gridVisible: boolean;
+  readonly outlinesVisible: boolean;
+  /** Zoom at or above which the near level of detail is used. */
+  readonly lodThresholdZoom: number;
+  /** Multiplier over one discrete zoom step per wheel notch. */
+  readonly zoomSensitivity: number;
+  /** Suppresses the camera flight and the zoom transition. */
+  readonly reducedMotion: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -117,6 +186,8 @@ export interface GameBridgeEvents {
   'chunks:invalidated': { readonly keys: readonly string[] };
   /** Redraw everything: after a full snapshot resynchronisation. */
   'world:reload': Record<string, never>;
+  /** Client rendering preferences changed. The scene applies what it owns. */
+  'settings:changed': RenderPreferences;
   /** Whether the world layer accepts input. Written only by the input arbiter. */
   'input:enabled': { readonly enabled: boolean; readonly reason: string };
   /** The viewport was resized by the CSS grid, which is what decides the size. */
@@ -139,8 +210,15 @@ export interface GameBridge {
   ) => () => void;
   off: <TEvent extends GameBridgeEvent>(event: TEvent, handler: GameBridgeHandler<TEvent>) => void;
   emit: <TEvent extends GameBridgeEvent>(event: TEvent, payload: GameBridgeEvents[TEvent]) => void;
-  /** Last payload of an event, for a late subscriber. Only the two state-like ones. */
-  latest: <TEvent extends 'camera:changed' | 'render:stats' | 'scene:ready'>(
+  /**
+   * Last payload of an event, for a late subscriber. Only the state-like ones.
+   *
+   * `settings:changed` is one of them, and it has to be: the world scene subscribes in
+   * its own `create`, which runs after the boot and preload scenes, so a page that
+   * published the stored preferences while mounting the canvas would have published them
+   * to nobody. Retaining the payload is what makes the order of the two irrelevant.
+   */
+  latest: <TEvent extends 'camera:changed' | 'render:stats' | 'scene:ready' | 'settings:changed'>(
     event: TEvent,
   ) => GameBridgeEvents[TEvent] | undefined;
   clear: () => void;
@@ -157,6 +235,7 @@ function createBridge(): GameBridge {
     'camera:changed',
     'render:stats',
     'scene:ready',
+    'settings:changed',
   ];
 
   function setFor(event: GameBridgeEvent): HandlerSet {

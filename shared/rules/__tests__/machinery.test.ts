@@ -235,6 +235,49 @@ describe('compatibility of operation and machinery (GDD section 90)', () => {
     ).toBe(false);
   });
 
+  it('refuses swapping the powered machine and the implement (GDD 90 is a table of roles)', () => {
+    // Sin los papeles, el multiconjunto de tipos de las dos peticiones es identico y la
+    // regla acepta la intercambiada. La tabla de GDD 90 dice "tractor + arado", no "arado +
+    // tractor": el papel forma parte de la fila.
+    for (const [operation, powered, implement] of [
+      ['PLOW', MachineType.TRACTOR, MachineType.PLOW],
+      ['CULTIVATE', MachineType.TRACTOR, MachineType.CULTIVATOR],
+      ['SEED', MachineType.TRACTOR, MachineType.SEEDER],
+      ['HARVEST', MachineType.HARVESTER, MachineType.TRAILER],
+    ] as const) {
+      expect(
+        isOperationCompatible({
+          operation,
+          offeredMachineTypes: [powered, implement],
+          ownedMachineTypes: owned,
+          poweredMachineType: powered,
+          implementMachineType: implement,
+        }),
+      ).toBe(true);
+      expect(
+        explainIncompatibility({
+          operation,
+          offeredMachineTypes: [implement, powered],
+          ownedMachineTypes: owned,
+          poweredMachineType: implement,
+          implementMachineType: powered,
+        }),
+      ).toEqual([ValidationCode.POWERED_MACHINE_REQUIRED, ValidationCode.IMPLEMENT_NOT_ALLOWED]);
+    }
+  });
+
+  it('refuses an implement for an operation that takes none', () => {
+    expect(
+      explainIncompatibility({
+        operation: 'FELL',
+        offeredMachineTypes: [MachineType.HARVESTER_FORESTRY, MachineType.FORWARDER],
+        ownedMachineTypes: [MachineType.FORWARDER],
+        poweredMachineType: MachineType.HARVESTER_FORESTRY,
+        implementMachineType: MachineType.FORWARDER,
+      }),
+    ).toEqual([ValidationCode.IMPLEMENT_NOT_ALLOWED, ValidationCode.MACHINE_TYPE_NOT_COMPATIBLE]);
+  });
+
   it('reports an unsupported operation once and stops', () => {
     expect(
       explainIncompatibility(

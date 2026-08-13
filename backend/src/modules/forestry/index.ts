@@ -1,39 +1,150 @@
-// Modulo `forestry`. Silvicultura: parcelas, tala por lote, replantacion y desmonte.
+// Module `forestry`: the plot, the tree, the batch felling, the replanting and the clearing
+// (GDD sections 10 and 128 to 141).
 //
-// Andamiaje creado por W3-A con la ruta y la firma definitivas. Propietario del contenido:
-// W6-C, que sustituye el cuerpo de este fichero sin tocar `src/app.ts` ni el registro de
-// rutas (plan seccion 11, regla 3).
+// Owner: workflow W6-C. Replaces the scaffolding workflow W3-A left with the definitive path and
+// signature (plan section 11, rule 3): `src/app.ts`, `src/handlers.ts` and the route registry
+// were not touched, only the body of this module. `defineStubRoute` became `defineRoute`, in
+// place.
 //
-// Rutas del area `forestry` que le corresponden, en el orden del contrato:
+// The shape of the module, which is a chain and never a loop:
 //
-//   GET /api/forest-plots
-//   GET /api/forest-plots/:forestPlotId
-//   POST /api/forest-plots
-//   POST /api/forest-plots/:forestPlotId/fell
-//   POST /api/forest-plots/:forestPlotId/replant
-//   POST /api/land/clear
+//   `generator.ts` the deterministic draw of a wild forest (GDD section 130). Pure.
+//   `record.ts`    the rows of the area and their loaders. No writes, no derived arithmetic.
+//   `readModel.ts` the entities of the contract and the frames.
+//   `service.ts`   the plot: creation, the one shot generation mark, the milestone schedule and
+//                  the clearing of felled ground.
+//   `tasks.ts`     the three operations: assignment, completion and the release of a
+//                  cancellation.
+//   `jobs.ts`      the handler of `FOREST_NOTIFY_MILESTONE` and the forestry contribution to
+//                  `TASK_COMPLETE`.
+//   `routes.ts`    the HTTP surface, deliberately thin.
 //
-// Cada una responde hoy 501 con el codigo `NOT_IMPLEMENTED` y su clave en los detalles, y ya
-// valida su peticion, arrastra sus guardas y figura en la documentacion OpenAPI: lo unico que
-// falta es el cuerpo.
+// WHAT ENTERS THE MVP OF THIS SYSTEM (GDD section 141), and where each item is:
 //
-// `POST /api/land/clear` vive en el espacio de nombres de `land` y lo registra este modulo, que es
-// literal respecto al plan y respeta las zonas de ESLint: `forestry` y `tasks` son hermanos de
-// la misma fase y no pueden importarse (docs/handoff/NOTES-W2c.md, apartado 2.5).
+//   ForestPlot separate from Field, multi chunk        `service.ts`, `createForestPlot`
+//   Individual Tree with four growth stages            `shared/rules/forestry.ts`, derived
+//   Procedural generation of a populated forest        `generator.ts`
+//   Batch felling, never tree by tree from the UI      `tasks.ts`, `assignFellTask`
+//   One species                                        `shared/config/forestry.ts`, `PINE`
+//   Separate forestry machinery                        `shared/config/machines.ts`
+//   Wood store as a building of its own                `shared/config/buildings.ts`
+//   Manual replanting, never automatic                 `tasks.ts`, `assignReplantTask`
+//   Worker and skillFactor reused with no forestry skill `modules/workers`, unchanged
 //
-// Como sustituirlo: cambiar cada `defineStubRoute(app, clave)` por
-// `defineRoute(app, clave, manejador)` con el manejador tipado, que recibe la peticion con
-// `params`, `query` y `body` ya validados y devuelve exactamente `RouteReply<clave>`. Todo
-// camino mutante pasa por `withPlayerAdvanced` de `lib/advancePlayer.ts`, que es lo que
-// devuelve el `seq` que la respuesta secuenciada tiene que llevar.
+// And what does not: felling one tree at a time from the interface, several species, converting
+// a field back to forest, and a forestry skill distinct from the agricultural one.
+//
+// WHAT THIS MODULE DOES NOT DO. It never stores the stage, the age or the volume of a tree: all
+// three are derived from `plantedAtGameMs`, the species and the clock, which is the resolution of
+// GDD section 130 against GDD section 140 (ADR-0030). It never counts storage capacity: the store
+// belongs to the farm and `modules/farms/service.ts` is the one place that writes it. It never
+// turns wood into money: that is `modules/economy`, through `POST /api/market/sell`. And it never
+// writes a cell directly except for the two columns `modules/world` does not expose, the terrain
+// override of a clearing and the consumption mark of the generator, both with the same discipline
+// that module uses.
 
 import { type FastifyInstance } from 'fastify';
-import { defineStubRoute } from '../../plugins/routes.js';
-import { routeKeysOfArea } from '../../shared/index.js';
+import { registerForestryScheduledHandlers } from './jobs.js';
+import { registerForestryRoutes as registerRoutes } from './routes.js';
 
-/** Registra las rutas del area `forestry`. Invocada una vez por `src/app.ts`. */
+/**
+ * Registers the routes of the area and the forestry contribution to `TASK_COMPLETE`.
+ *
+ * The two are registered together because they are the two halves of one lifecycle: the routes
+ * assign the three operations and the handler completes them. It is the same pattern
+ * `registerEconomyRoutes` uses for the forced liquidation of ADR-0039, and it is idempotent.
+ * Invoked once by `src/app.ts`.
+ */
 export function registerForestryRoutes(app: FastifyInstance): void {
-  for (const key of routeKeysOfArea('forestry')) {
-    defineStubRoute(app, key);
-  }
+  registerRoutes(app);
+  registerForestryScheduledHandlers();
 }
+
+export {
+  FOREST_SALT,
+  forestUnitHash,
+  generateNaturalForest,
+  generatedFellableVolumeDm3,
+  generatedFellableVolumeM3,
+  naturalTreeAt,
+  stageAgeWindow,
+  stageForDraw,
+  type GeneratedTree,
+} from './generator.js';
+
+export {
+  FOREST_PLOT_REF_TYPE,
+  TASK_REF_TYPE,
+  findLivePlot,
+  findTask,
+  loadPlayerPlots,
+  pageTrees,
+  plotCells,
+  requireIdlePlot,
+  requirePlot,
+  standingTrees,
+  toForestPlotRecord,
+  toTaskRecord,
+  toTreeRecord,
+  treeView,
+  type ForestPlotRecord,
+  type TaskRecord,
+  type TreeRecord,
+} from './record.js';
+
+export {
+  buildForestPlotDto,
+  emptyStageHistogram,
+  forestPlotUpsertedFrame,
+  stageHistogramOf,
+  standingWoodDm3,
+  taskUpsertedFrame,
+  toTaskDto,
+  toTreeDto,
+  treesUpsertedFrame,
+  woodValue,
+} from './readModel.js';
+
+export {
+  MILESTONE_WINDOW_GAME_HOURS,
+  MILESTONE_WINDOW_GAME_MS,
+  applyClearing,
+  createForestPlot,
+  insertTrees,
+  isAtMilestone,
+  markNaturalTreesConsumed,
+  milestoneWindowEnd,
+  nextMilestoneGameMs,
+  refreshPlotCellCount,
+  requireValidForestSelection,
+  syncMilestoneSchedule,
+  treesCrossingMilestone,
+  unconsumedCells,
+  type CreateForestPlotInput,
+  type CreateForestPlotOutcome,
+} from './service.js';
+
+export {
+  FORESTRY_OPERATIONS,
+  assignClearLandTask,
+  assignFellTask,
+  assignReplantTask,
+  completeForestryTask,
+  emptyCellsOfPlot,
+  freeWoodCapacity,
+  isForestryOperation,
+  liveTreesOfArea,
+  releaseForestryTask,
+  type ClearLandInput,
+  type FellInput,
+  type ForestryAssignment,
+  type ReplantInput,
+} from './tasks.js';
+
+export {
+  OWNED_EVENT_KIND,
+  composeTaskCompleteHandler,
+  forestNotifyMilestoneHandler,
+  registerForestryScheduledHandlers,
+  resetForestryScheduledHandlerRegistration,
+} from './jobs.js';

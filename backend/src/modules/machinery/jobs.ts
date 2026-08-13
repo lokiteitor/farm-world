@@ -1,52 +1,77 @@
-// Manejadores de la cola que posee el modulo `machinery`.
+// The scheduled event this module owns: the completion of a workshop repair.
 //
-// Andamiaje creado por W3-A con la firma definitiva. Propietario del contenido: W5-A.
+// Owner: workflow W5-A. Module `machinery`. It replaces the scaffolding workflow W3-A left
+// with the definitive signature, so neither `src/handlers.ts`, nor the queue, nor the point
+// of advance is reopened (plan section 11, rule 3). The metric
+// `farm_world_scheduled_events_unhandled_total` no longer counts this kind.
 //
-// El registro de manejadores de `lib/advancePlayer.ts` esta predeclarado con los seis tipos de
-// `ScheduledEventKind`, y `src/handlers.ts` conecta cada uno con el fichero del modulo que lo
-// posee. Sustituir el cuerpo de esta funcion es por tanto todo lo que hace falta: ni el
-// registro, ni la cola, ni el punto de avance se vuelven a tocar (plan seccion 11, regla 3).
+// GDD section 93 gives repair no duration at all and GDD section 95 leaves `IN_REPAIR`
+// reserved. Plan section 2.2 resolves both at once: the repair is a scheduled event whose
+// length is proportional to the points restored, so the state becomes real and the decision
+// to repair acquires an opportunity cost in the middle of a cycle. It consumes no worker.
 //
-// Contrato del manejador, que no cambia al implementarlo:
+// Contract of the handler, which does not change now that it is implemented:
 //
-//   - Corre dentro de la transaccion del avance y despues de que el evento haya sido reclamado
-//     con una actualizacion condicional, de modo que NO debe volver a comprobar el estado: si
-//     esta funcion se ejecuta, este proceso gano la carrera y es el unico que la ejecuta.
-//   - Todo efecto debe estar en esta transaccion. Encolar o publicar se hace registrando en
-//     `context.outbox`, que se vacia despues del commit.
-//   - Los sobres para el cliente se declaran con `context.emit(...)` y se escriben con el
-//     instante de vencimiento del evento, no con el de proceso: un trabajo que corrio tarde
-//     coloca el cambio donde ocurrio.
-//   - Nada de `Date.now()`: el instante es `context.reading` y el vencimiento
+//   - It runs inside the transaction of the advance and after the event was claimed with a
+//     conditional update, so it must NOT check the status of the event again.
+//   - Every effect belongs to that transaction. Enqueueing and publishing are recorded in
+//     `context.outbox` and happen after the commit.
+//   - Frames are declared with `context.emit(...)` and are written with the due instant of
+//     the event, so a job that ran late places the change where it happened.
+//   - No `Date.now()`: the instant is `context.reading` and the due one is
 //     `context.event.dueGameMs`.
+//
+// The handler carries nothing forward from the request that scheduled it, because the
+// payload of a scheduled event is identifiers and nothing else (plan section 6.4). It does
+// not need to: the number of points the player paid for is the length of the repair, so
+// `scheduledRestorationBp` reads it back from the two instants already on the row. That is
+// the same discipline `modules/fields` follows, where the projection is the authority and the
+// job only materialises what it says.
 
 import { type ScheduledEventHandler } from '../../lib/advancePlayer.js';
 import {
+  MachineStatus,
   ScheduledEventKind,
   type ScheduledEventKind as ScheduledEventKindType,
 } from '../../shared/index.js';
+import { machineUpsertedFrame } from './readModel.js';
+import { MACHINE_REF_TYPE, findLiveMachine } from './record.js';
+import { completeRepair } from './service.js';
 
 /** El tipo de evento agendado que posee este modulo. */
 export const OWNED_EVENT_KIND: ScheduledEventKindType = ScheduledEventKind.MACHINE_REPAIR_COMPLETE;
 
 /**
- * Manejador de `MACHINE_REPAIR_COMPLETE`: devuelve la maquina a `IDLE` con su condicion restaurada (GDD §93).
+ * Handler of `MACHINE_REPAIR_COMPLETE`: restores the condition and returns the machine to
+ * `IDLE` (GDD section 93).
  *
- * Andamiaje: no aplica ningun efecto y lo hace constar. El evento ya quedo marcado como
- * procesado por el punto de avance, asi que un andamiaje que fallara convertiria cada
- * vencimiento en un reintento indefinido de BullMQ; uno que registra el hueco deja la misma
- * traza que un tipo sin manejador y no bloquea la simulacion de los demas.
+ * A missing reference, a machine that no longer exists, a machine of another player and a
+ * machine that is no longer in the workshop are all answered by doing nothing. None of the
+ * four is an error: a sale cancels the pending row but races with an alarm clock that is
+ * already in flight, and failing here would turn the due instant into an endless BullMQ
+ * retry, because the point of advance has already marked the event as processed.
  */
 export const machineRepairCompleteHandler: ScheduledEventHandler = async (context) => {
-  context.services.metrics.scheduledEventsUnhandled.inc({ kind: context.event.kind });
-  context.services.logger.warn(
-    {
-      kind: context.event.kind,
-      scheduledEventId: context.event.id,
-      playerId: context.lock.playerId,
-      owner: 'W5-A',
-    },
-    'andamiaje de manejador: el evento vencio y su modulo todavia no esta implementado',
-  );
-  await Promise.resolve();
+  const { event, lock, tx } = context;
+  if (event.refType !== MACHINE_REF_TYPE || event.refId === null) {
+    context.services.logger.warn(
+      { kind: event.kind, scheduledEventId: event.id, playerId: lock.playerId },
+      'repair event without a machine reference',
+    );
+    return;
+  }
+
+  const machine = await findLiveMachine(tx, lock.playerId, event.refId);
+  if (machine === null || machine.status !== MachineStatus.IN_REPAIR) {
+    context.services.logger.debug(
+      { kind: event.kind, scheduledEventId: event.id, machineId: event.refId },
+      'repair event of a machine that is no longer being repaired',
+    );
+    return;
+  }
+
+  // The due instant and not the current one: the repair finished when its end was reached,
+  // and `advancePlayer` writes the frame with that instant.
+  const repaired = await completeRepair(tx, machine, event.dueGameMs);
+  context.emit(machineUpsertedFrame(repaired));
 };

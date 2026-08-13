@@ -349,7 +349,12 @@ export const OPERATION_REQUIREMENTS: Readonly<Record<TaskOperation, OperationReq
     toCropState: 'HARVESTED',
     // The field returns to virgin soil with the cycle (GDD sections 76 and 84).
     soilConditionAfter: 'UNTOUCHED',
-    resetsWeedLevel: true,
+    // False, and it is the one flag of this table worth stating twice. GDD section 78 gives
+    // exactly one way of clearing weeds in the MVP, `CULTIVATE`, and GDD section 89 records
+    // the side effect on the cultivator alone; neither GDD section 76 nor 83 nor 84 gives the
+    // harvest any effect on them. Granting it one here would be a balance decision taken in the
+    // catalogue, which is the one thing the catalogue may not do.
+    resetsWeedLevel: false,
     requiresCrop: false,
     requiresStorage: 'WHEAT_LITERS',
     workSpeedOverrideUnitsPerGameHour: null,

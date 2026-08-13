@@ -13,47 +13,6 @@ Siguen abiertas las notas 1.3, 1.4 y 1.5, que dependen de fases posteriores. Las
 estan aplicadas y se conservan con su numeracion original en el apartado «Resuelto» del final del
 fichero, porque otros documentos y varios comentarios de codigo las citan por numero.
 
-### 1.3 El backend debe honrar `expectedTotal`
-
-Categoria: contrato
-Propietario del cambio: W4-A (`land`), W4-B (`farms`), W5-A (`machinery`)
-
-Tres cuerpos declaran `expectedTotal` opcional: `POST /api/land/purchase`,
-`POST /api/farms/:farmId/buildings` y `POST /api/machines`. Cuando el campo esta presente, el servidor
-debe comparar su propio total con el recibido y rechazar la peticion si difieren, en lugar de cobrar en
-silencio un presupuesto caducado. El codigo a devolver es `VALIDATION_FAILED` con
-`details.expected` y `details.actual`, que es lo que el esquema de detalles ya contempla. Un campo
-declarado en el contrato y no comprobado es peor que no declararlo.
-
-### 1.4 La cabecera de idempotencia es una guarda del registro, no del manejador
-
-Categoria: contrato
-Propietario del cambio: W3-A (`app.ts`, plugins)
-
-`IDEMPOTENT_ROUTE_KEYS` enumera las rutas que exigen `Idempotency-Key`. La guarda debe derivarse de la
-bandera `requiresIdempotencyKey` del mapa, no de una lista escrita a mano en el registro, para que
-anadir una ruta que mueve dinero no pueda olvidar la cabecera. La constante existe precisamente para
-eso. `shared/api/errors.ts` aporta `idempotencyKeyRequired()`.
-
-Rutas afectadas hoy, ocho: `POST /api/land/purchase`, `POST /api/farms/:farmId/buildings`,
-`DELETE /api/buildings/:buildingId`, `POST /api/machines`, `POST /api/machines/:machineId/sell`,
-`POST /api/machines/:machineId/repair`, `POST /api/market/sell` y `POST /api/dev/grant`.
-
-### 1.5 El terreno de un chunk no viaja en la respuesta
-
-Categoria: contrato
-Propietario del cambio: W3-B (`world`), W4-D (`game/world`)
-
-`POST /api/world/chunks` devuelve solo la capa de modificaciones y la version del chunk. El terreno
-generado no viaja: es funcion pura de la semilla y de la coordenada, y el generador determinista de
-`shared/world/` lo reproduce en el cliente exactamente igual que en el servidor. Es lo que la seccion
-9.5 del plan da por supuesto al decir que solo la capa de modificaciones lleva revision.
-
-Si W4-D concluye que el cliente no puede generar terreno con el presupuesto de rendimiento de la
-seccion 9.3, hace falta un campo adicional en `chunkStateSchema` (por ejemplo `terrain` como cadena en
-base64 de un byte por celda). Es una adicion compatible, pero afecta a este directorio congelado: se
-anota en el `handoff` del agente que lo necesite y lo aplica W7.
-
 ## 2. Decisiones del contrato que condicionan a las fases siguientes
 
 ### 2.1 La respuesta mutante lleva `seq` y entidades completas, no una lista de eventos
@@ -244,6 +203,67 @@ compilaciones de produccion y `make sync-types`.
 | 1.1 Reexportaciones de `shared/index.ts` | Ventana de parcheo W2.5 | Las cuatro lineas descomentadas en su sitio. El backend y el frontend pueden importar por el barril y ya no por subruta |
 | 1.2 Cinco codigos de validacion que faltan | Ventana de parcheo W2.5 | Los cinco de autenticacion (`AUTH_REQUIRED`, `AUTH_INVALID_CREDENTIALS`, `AUTH_TOKEN_EXPIRED`, `AUTH_TICKET_INVALID`, `EMAIL_ALREADY_REGISTERED`) se movieron a `ValidationCode`, con su mensaje en `VALIDATION_MESSAGES`, y salieron de `ApiTransportCode`, que conserva los seis fallos del servicio. `ApiTransportCode` no queda vacio, que era la otra posibilidad que la nota preveia: la cabecera de idempotencia, el limite de peticiones, la bandera de desarrollo, el stub declarado, la caida de una dependencia y el error imprevisto no son reglas del jugador. Ningun consumidor cambio, porque todos leen `ApiErrorCode`, `API_ERROR_MESSAGES` y `API_ERROR_HTTP_STATUS`; la prueba de disyuncion entre las dos familias sigue en verde |
 | 1.6 Sincronizacion de copias | Ventana de parcheo W2.5 | `make sync-types` ejecutado; `make check-sync` devuelve 0 |
+
+### 1.5 El terreno de un chunk no viaja en la respuesta
+
+Sin cambio pendiente, y la decision es no ampliar el esquema: el cliente reproduce el terreno con el
+generador determinista de `shared/world/` y el presupuesto de rendimiento de la seccion 9.3 del plan se
+cumple con margen, medido en `NOTES-w4d.md`. `chunkStateSchema` sigue llevando solo la capa de
+modificaciones y su version.
+
+El texto original de la nota:
+
+Categoria: contrato
+Propietario del cambio: W3-B (`world`), W4-D (`game/world`)
+
+`POST /api/world/chunks` devuelve solo la capa de modificaciones y la version del chunk. El terreno
+generado no viaja: es funcion pura de la semilla y de la coordenada, y el generador determinista de
+`shared/world/` lo reproduce en el cliente exactamente igual que en el servidor. Es lo que la seccion
+9.5 del plan da por supuesto al decir que solo la capa de modificaciones lleva revision.
+
+Si W4-D concluye que el cliente no puede generar terreno con el presupuesto de rendimiento de la
+seccion 9.3, hace falta un campo adicional en `chunkStateSchema` (por ejemplo `terrain` como cadena en
+base64 de un byte por celda). Es una adicion compatible, pero afecta a este directorio congelado: se
+anota en el `handoff` del agente que lo necesite y lo aplica W7.
+
+### 1.4 La cabecera de idempotencia es una guarda del registro, no del manejador
+
+Sin cambio pendiente: `backend/src/plugins/routes.ts` deriva la guarda de `route.requiresIdempotencyKey`
+del mapa de rutas y no de ninguna lista escrita a mano.
+
+El texto original de la nota:
+
+Categoria: contrato
+Propietario del cambio: W3-A (`app.ts`, plugins)
+
+`IDEMPOTENT_ROUTE_KEYS` enumera las rutas que exigen `Idempotency-Key`. La guarda debe derivarse de la
+bandera `requiresIdempotencyKey` del mapa, no de una lista escrita a mano en el registro, para que
+anadir una ruta que mueve dinero no pueda olvidar la cabecera. La constante existe precisamente para
+eso. `shared/api/errors.ts` aporta `idempotencyKeyRequired()`.
+
+Rutas afectadas hoy, ocho: `POST /api/land/purchase`, `POST /api/farms/:farmId/buildings`,
+`DELETE /api/buildings/:buildingId`, `POST /api/machines`, `POST /api/machines/:machineId/sell`,
+`POST /api/machines/:machineId/repair`, `POST /api/market/sell` y `POST /api/dev/grant`.
+
+### 1.3 El backend debe honrar `expectedTotal`
+
+Sin cambio pendiente: los tres modulos lo comprueban. `modules/land/service.ts` compara el total contra
+`expectedTotal` despues de resolver que celdas adquiere realmente, `modules/farms/index.ts` lo compara
+contra `plan.totalPaid` y `modules/machinery/service.ts` contra el precio del catalogo. Los tres devuelven
+`VALIDATION_FAILED` sobre `body.expectedTotal` con `expected` y `actual`. W7-A anadio la misma
+comprobacion al servidor simulado del cliente, que era el unico que lo ignoraba.
+
+El texto original de la nota:
+
+Categoria: contrato
+Propietario del cambio: W4-A (`land`), W4-B (`farms`), W5-A (`machinery`)
+
+Tres cuerpos declaran `expectedTotal` opcional: `POST /api/land/purchase`,
+`POST /api/farms/:farmId/buildings` y `POST /api/machines`. Cuando el campo esta presente, el servidor
+debe comparar su propio total con el recibido y rechazar la peticion si difieren, en lugar de cobrar en
+silencio un presupuesto caducado. El codigo a devolver es `VALIDATION_FAILED` con
+`details.expected` y `details.actual`, que es lo que el esquema de detalles ya contempla. Un campo
+declarado en el contrato y no comprobado es peor que no declararlo.
 
 ### 1.1 Reexportaciones de `shared/index.ts`
 

@@ -8,6 +8,7 @@
 // workflow W3-C be developed against the whole surface while nine tenths of it is a stub.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { stubRouteKeys } from '../plugins/routes.js';
 import {
   API_ROUTE_KEYS,
   ApiTransportCode,
@@ -15,29 +16,15 @@ import {
   IDEMPOTENT_ROUTE_KEYS,
   SHARED_CONTRACT_VERSION,
   routeDefinition,
-  type ApiRouteKey,
 } from '../shared/index.js';
 import { bearer, createHarness, registerViaHttp, type Harness } from './harness.js';
 
 let harness: Harness;
 let accessToken: string;
 
-/** The routes that are implemented in this workflow. Everything else must answer 501. */
-const IMPLEMENTED: readonly ApiRouteKey[] = [
-  'POST /api/auth/register',
-  'POST /api/auth/login',
-  'POST /api/auth/refresh',
-  'POST /api/auth/logout',
-  'POST /api/auth/ws-ticket',
-  'GET /api/auth/me',
-  'GET /health',
-  'GET /metrics',
-  'GET /docs',
-  'POST /api/dev/retime',
-  'POST /api/dev/advance-player',
-  'POST /api/dev/grant',
-  'POST /api/dev/reconcile',
-];
+// Which routes are still scaffolding is read from the registry itself (`stubRouteKeys`), not from
+// a literal kept in step by hand: a list here turns "this module is now implemented" into a failing
+// build in an unrelated file, which is what happened at the end of W3 and again at the end of W4.
 
 beforeAll(async () => {
   harness = await createHarness();
@@ -63,14 +50,14 @@ describe('el registro de rutas', () => {
 });
 
 describe('las rutas todavia no implementadas', () => {
-  const stubs = API_ROUTE_KEYS.filter(
-    (key) => !IMPLEMENTED.includes(key) && !DEV_ROUTE_KEYS.includes(key),
-  );
+  const stubs = stubRouteKeys().filter((key) => !DEV_ROUTE_KEYS.includes(key));
 
-  it('son las de los diez modulos de dominio pendientes', () => {
-    // Forty two of the fifty five: the six of auth, the three of the system area that are served
-    // and the four development routes are the thirteen that are implemented.
-    expect(stubs.length).toBe(42);
+  it('son un subconjunto propio del contrato que encoge en cada fase', () => {
+    // No exact count: the number is meant to fall as modules land, and asserting it would make
+    // every implemented module break this file. What must hold is that the scaffolding is a
+    // strict subset of the contract and that at least one route is already served.
+    expect(stubs.length).toBeLessThan(API_ROUTE_KEYS.length);
+    for (const key of stubs) expect(API_ROUTE_KEYS).toContain(key);
   });
 
   for (const key of stubs) {
@@ -153,6 +140,29 @@ describe('el area de sistema', () => {
     const body = response.json<{ enqueuedEvents: number; pendingEvents: number }>();
     expect(body.pendingEvents).toBeGreaterThanOrEqual(1);
     expect(body.enqueuedEvents).toBeGreaterThanOrEqual(0);
+  });
+
+  it('decide la identidad antes de validar el cuerpo, y no filtra el esquema', async () => {
+    // El orden importaba: con las guardas en `preHandler` la validacion de esquema corria
+    // antes, y un llamante sin sesion podia enumerar el cuerpo de cualquier ruta del
+    // servicio leyendo el `details.field` del 400 (docs/revision-alcance.md, hallazgo H3).
+    for (const url of ['/api/farms', '/api/dev/grant']) {
+      const response = await harness.app.inject({ method: 'POST', url, payload: {} });
+      expect(response.statusCode, url).toBe(401);
+      const body = response.json<{ error: { code: string; details?: { field?: string } } }>();
+      expect(body.error.code, url).toBe('AUTH_REQUIRED');
+      expect(body.error.details?.field, url).toBeUndefined();
+    }
+
+    // Y con sesion, la validacion sigue corriendo exactamente igual.
+    const validated = await harness.app.inject({
+      method: 'POST',
+      url: '/api/farms',
+      headers: bearer(accessToken),
+      payload: {},
+    });
+    expect(validated.statusCode).toBe(400);
+    expect(validated.json<{ error: { code: string } }>().error.code).toBe('VALIDATION_FAILED');
   });
 
   it('devuelve la forma del contrato para una ruta que no existe', async () => {

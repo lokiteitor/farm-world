@@ -1,39 +1,87 @@
-// Modulo `tasks`. Motor de tareas: validacion de §90 y §104, agendado, finalizacion y cancelacion.
+// Module `tasks`. The task engine: the validation of GDD sections 90 and 104, the
+// scheduling, the completion and the cancellation.
 //
-// Andamiaje creado por W3-A con la ruta y la firma definitivas. Propietario del contenido:
-// W6-A, que sustituye el cuerpo de este fichero sin tocar `src/app.ts` ni el registro de
-// rutas (plan seccion 11, regla 3).
+// Owner: workflow W6-A. Replaces the scaffolding workflow W3-A left with the definitive
+// path and signature (plan section 11, rule 3): `src/app.ts`, `src/handlers.ts` and the
+// route registry were not touched, only the body of this module; `defineStubRoute` became
+// `defineRoute`, in place.
 //
-// Rutas del area `tasks` que le corresponden, en el orden del contrato:
+// The shape of the module:
 //
-//   GET /api/tasks
-//   GET /api/tasks/:taskId
-//   POST /api/tasks/estimate
-//   POST /api/tasks
-//   POST /api/tasks/:taskId/cancel
+//   `record.ts`     the task row, its derived readings and the read model.
+//   `assignment.ts` the six checks of GDD section 104 and the formula of GDD section 91,
+//                   evaluated once for the preview and for the assignment.
+//   `service.ts`    the three write paths and the core they share.
+//   `routes.ts`     the HTTP surface, which converts and decides nothing.
+//   `jobs.ts`       the handler of `TASK_COMPLETE`.
 //
-// Cada una responde hoy 501 con el codigo `NOT_IMPLEMENTED` y su clave en los detalles, y ya
-// valida su peticion, arrastra sus guardas y figura en la documentacion OpenAPI: lo unico que
-// falta es el cuerpo.
+// What this module is responsible for, stated once so the boundary is not guessed:
 //
-// La peticion es una union discriminada por operacion, de modo que sembrar sin cultivo o talar
-// contra un campo son peticiones mal formadas y no conflictos de dominio: la validacion de
-// dominio solo comprueba compatibilidad real contra `OPERATION_REQUIREMENTS`, estado del
-// campo, reserva de recursos y capacidad de almacenamiento (docs/handoff/NOTES-W2c.md, 2.4).
+//   - It owns the sequence. The order in which a worker, a set of machines, a target and a
+//     store are checked and committed is a rule of GDD section 104 and it lives here.
+//   - It owns the row that ties them together. `Task` plus `task_machines` is the single
+//     authoritative link between a worker and a machine (ADR-0040); the reservation columns
+//     on the other three tables are derived from it and are checked, never trusted.
+//   - It owns nothing else. The crop cycle is `modules/fields`, the wear is
+//     `modules/machinery`, the skill is `modules/workers`, the capacity of a store is
+//     `modules/farms` and the price of anything is `modules/economy`. Every one of those is
+//     a module of an earlier phase and is called rather than reimplemented.
 //
-// Como sustituirlo: cambiar cada `defineStubRoute(app, clave)` por
-// `defineRoute(app, clave, manejador)` con el manejador tipado, que recibe la peticion con
-// `params`, `query` y `body` ya validados y devuelve exactamente `RouteReply<clave>`. Todo
-// camino mutante pasa por `withPlayerAdvanced` de `lib/advancePlayer.ts`, que es lo que
-// devuelve el `seq` que la respuesta secuenciada tiene que llevar.
+// The one export a module outside this one needs is `cancelTasksForLiquidation`, which is
+// the `CANCEL_TASKS` strategy the forced liquidation of `modules/economy` declares and
+// leaves without an implementation (ADR-0039, `docs/handoff/NOTES-w5c.md` item 2.4). It is
+// exported and not yet consumed, because naming it in the `STEP_PLAN` of that module is a
+// change in a file this workflow does not own; the patch is in
+// `docs/handoff/NOTES-w6a.md`, item 2.1.
 
 import { type FastifyInstance } from 'fastify';
-import { defineStubRoute } from '../../plugins/routes.js';
-import { routeKeysOfArea } from '../../shared/index.js';
+import { registerTasksRoutes as registerRoutes } from './routes.js';
 
 /** Registra las rutas del area `tasks`. Invocada una vez por `src/app.ts`. */
 export function registerTasksRoutes(app: FastifyInstance): void {
-  for (const key of routeKeysOfArea('tasks')) {
-    defineStubRoute(app, key);
-  }
+  registerRoutes(app);
 }
+
+export { OWNED_EVENT_KIND, taskCompleteHandler } from './jobs.js';
+
+export {
+  TASK_REF_TYPE,
+  TASK_SELECT,
+  findTask,
+  loadRunningTasks,
+  loadTaskPage,
+  progressBp,
+  requireTask,
+  taskUpsertedFrame,
+  toTaskDto,
+  toTaskRecord,
+  workedGameHours,
+  type TaskPage,
+  type TaskRecord,
+  type TaskRow,
+} from './record.js';
+
+export {
+  evaluateAssignment,
+  firstBlocker,
+  isFeasible,
+  paceMachineType,
+  roleOfMachine,
+  type AssignmentEvaluation,
+  type AssignmentRequest,
+  type PlotRecord,
+} from './assignment.js';
+
+export {
+  cancelTask,
+  cancelTaskById,
+  cancelTasksForLiquidation,
+  completeTask,
+  createTask,
+  taskOfEvent,
+  type CancelTaskOutcome,
+  type CompleteTaskOutcome,
+  type CreateTaskOutcome,
+  type TaskClosure,
+  type TaskContext,
+} from './service.js';

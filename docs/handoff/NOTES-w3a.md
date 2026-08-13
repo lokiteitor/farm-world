@@ -10,39 +10,6 @@ la tabla de propiedad.
 
 ## 1. Pendiente para otros agentes
 
-### 1.1 Politica de reinicio del servicio `worker`
-
-Categoria: cambio en fichero congelado
-Ficheros afectados: `docker-compose.yml`, servicio `worker`
-Propietario del cambio: W7-A
-
-`restart: "no"` existia porque el punto de entrada de W1 registraba una linea y terminaba
-(`NOTES-W1` nota 4, reiterada en `NOTES-w2-5-parcheo` 2.5). Ya no es el caso: `backend/src/worker.ts`
-es un consumidor de larga vida de la cola de dominio, con barrido de reconciliacion al arrancar y
-cada minuto, y con apagado ordenado ante SIGTERM. La linea debe volver a `unless-stopped`, y lleva su
-comentario en el propio fichero de Compose.
-
-Mitigacion adoptada mientras tanto: ninguna necesaria. El proceso funciona; lo unico que falta es que
-Compose lo reinicie si muere.
-
-### 1.2 `METRICS_PORT` no figura en `.env.example`
-
-Categoria: cambio en fichero congelado
-Ficheros afectados: `.env.example`
-Propietario del cambio: W7-A
-
-`docker-compose.yml` inyecta `METRICS_PORT=9464` al servicio `worker` y
-`infra/prometheus/prometheus.yml` raspa `worker:9464/metrics`, pero la plantilla no declara la
-variable. La prueba `src/plugins/__tests__/config.test.ts` comprueba precisamente esa asimetria y
-deja constancia de ella: `CONTAINER_ENV_VARS` enumera las tres variables que inyectan los ficheros
-de Compose y que la plantilla no lleva (`NODE_ENV`, `HOST`, `METRICS_PORT`).
-
-Mitigacion adoptada: `plugins/config.ts` la declara con valor por omision 9464, que es el mismo que
-inyecta Compose, de modo que el worker abre su escuchador en el puerto correcto sin la variable.
-Documentarla en la plantilla es claridad, no correccion; si se anade, hay que anadirla tambien a
-`CONTAINER_ENV_VARS` o moverla a `SERVICE_ENV_VARS`, o la prueba falla, que es el comportamiento
-buscado.
-
 ### 1.3 `docs/ownership.md` no recoge cuatro rutas nuevas ni la convencion de pruebas
 
 Categoria: cambio en fichero de otro propietario
@@ -389,3 +356,52 @@ Estado en que queda la base de datos de desarrollo: como la dejo la ventana de p
 (semilla 20260811, tasa 12/1, epoch 0), el jugador `dev@farm-world.local` y cero eventos pendientes.
 Los mundos de las pruebas de integracion los borra el desmontaje del arnes, y el jugador que se creo a
 mano para la comprobacion con `curl` se borro al terminar.
+
+## Resuelto
+
+Las notas aplicadas se conservan aqui con su numeracion original, porque otros documentos y
+varios comentarios de codigo las citan por numero.
+
+### 1.2 `METRICS_PORT` no figura en `.env.example`
+
+Aplicado por W7-A (integracion). `.env.example` declara `METRICS_PORT=9464` con el motivo por el que
+existe, y la variable se movio de `CONTAINER_ENV_VARS` a `SERVICE_ENV_VARS` en `plugins/config.ts`, que es
+donde corresponde a una variable que el proceso lee. La prueba `plugins/__tests__/config.test.ts` afirma
+ahora la direccion del movimiento en lugar de la asimetria.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero congelado
+Ficheros afectados: `.env.example`
+Propietario del cambio: W7-A
+
+`docker-compose.yml` inyecta `METRICS_PORT=9464` al servicio `worker` y
+`infra/prometheus/prometheus.yml` raspa `worker:9464/metrics`, pero la plantilla no declara la
+variable. La prueba `src/plugins/__tests__/config.test.ts` comprueba precisamente esa asimetria y
+deja constancia de ella: `CONTAINER_ENV_VARS` enumera las tres variables que inyectan los ficheros
+de Compose y que la plantilla no lleva (`NODE_ENV`, `HOST`, `METRICS_PORT`).
+
+Mitigacion adoptada: `plugins/config.ts` la declara con valor por omision 9464, que es el mismo que
+inyecta Compose, de modo que el worker abre su escuchador en el puerto correcto sin la variable.
+Documentarla en la plantilla es claridad, no correccion; si se anade, hay que anadirla tambien a
+`CONTAINER_ENV_VARS` o moverla a `SERVICE_ENV_VARS`, o la prueba falla, que es el comportamiento
+buscado.
+
+### 1.1 Politica de reinicio del servicio `worker`
+
+Aplicado por W7-A (integracion): `restart: unless-stopped`.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero congelado
+Ficheros afectados: `docker-compose.yml`, servicio `worker`
+Propietario del cambio: W7-A
+
+`restart: "no"` existia porque el punto de entrada de W1 registraba una linea y terminaba
+(`NOTES-W1` nota 4, reiterada en `NOTES-w2-5-parcheo` 2.5). Ya no es el caso: `backend/src/worker.ts`
+es un consumidor de larga vida de la cola de dominio, con barrido de reconciliacion al arrancar y
+cada minuto, y con apagado ordenado ante SIGTERM. La linea debe volver a `unless-stopped`, y lleva su
+comentario en el propio fichero de Compose.
+
+Mitigacion adoptada mientras tanto: ninguna necesaria. El proceso funciona; lo unico que falta es que
+Compose lo reinicie si muere.

@@ -17,7 +17,9 @@
 //
 // The order of the guards is fixed: the development flag first, because a disabled route must
 // not even look at credentials; then the session; then the idempotency record, which is per
-// player and therefore needs the session; and last the advance of the player.
+// player and therefore needs the session; and last the advance of the player. The first two run
+// in `onRequest`, that is before the body is parsed and validated, and the last two in
+// `preHandler`, which is the earliest phase where the parsed body and the identity both exist.
 //
 // The advance is attached to the read paths and not to the sequenced ones. A sequenced route
 // mutates, so it runs inside `withPlayerAdvanced`, which advances the player in the same
@@ -107,13 +109,24 @@ export function defineRoute<TKey extends ApiRouteKey>(
   const entry = API_ROUTES[key];
   const route = routeDefinition(key);
 
-  const preHandlers: ((request: FastifyRequest, reply: FastifyReply) => Promise<unknown>)[] = [];
+  // The development flag and the identity are decided in `onRequest`, which Fastify runs
+  // before it parses and validates the body. Deciding them in `preHandler`, after the
+  // schema, let an unauthenticated caller enumerate the body schema of any route of the
+  // service — including the ones the flag disables — field by field, by reading the
+  // `details.field` of the 400 (`docs/revision-alcance.md`, hallazgo H3). Neither guard
+  // reads the body: one reads the configuration and the route, the other the headers.
+  //
+  // The idempotency guard stays in `preHandler` because it hashes the parsed body, and the
+  // advance guard because it needs the identity the auth guard puts on the request.
+  const onRequestHooks: ((request: FastifyRequest, reply: FastifyReply) => Promise<unknown>)[] = [];
   if (route.devOnly === true) {
-    preHandlers.push(devGuard);
+    onRequestHooks.push(devGuard);
   }
   if (route.requiresAuth) {
-    preHandlers.push(authGuard);
+    onRequestHooks.push(authGuard);
   }
+
+  const preHandlers: ((request: FastifyRequest, reply: FastifyReply) => Promise<unknown>)[] = [];
   if (route.requiresIdempotencyKey === true) {
     preHandlers.push(idempotencyGuard);
   }
@@ -148,6 +161,7 @@ export function defineRoute<TKey extends ApiRouteKey>(
       tags: [route.area],
       operationId: key.replace(/[^A-Za-z0-9]+/g, '_'),
     },
+    ...(onRequestHooks.length === 0 ? {} : { onRequest: onRequestHooks }),
     ...(preHandlers.length === 0 ? {} : { preHandler: preHandlers }),
     handler: async (request, reply) => handler(request as TypedRequest<TKey>, reply),
   });
@@ -165,7 +179,21 @@ export function defineRoute<TKey extends ApiRouteKey>(
  * The 501 is deliberately not a 404: a client developed against the simulated server must be
  * able to tell "this is not built yet" from "this route does not exist".
  */
+/**
+ * The keys registered through `defineStubRoute`, in registration order.
+ *
+ * Derived rather than hand-listed on purpose: the alternative is a literal in the test that every
+ * workflow implementing a module has to edit, and which fails the build when it forgets. Reading
+ * the registry makes "a stub answers 501, a real route does not" self-maintaining.
+ */
+const registeredStubKeys = new Set<ApiRouteKey>();
+
+export function stubRouteKeys(): readonly ApiRouteKey[] {
+  return [...registeredStubKeys];
+}
+
 export function defineStubRoute<TKey extends ApiRouteKey>(app: FastifyInstance, key: TKey): void {
+  registeredStubKeys.add(key);
   defineRoute(app, key, async () => {
     throw notImplemented(key);
   });

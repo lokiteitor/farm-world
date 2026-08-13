@@ -144,7 +144,15 @@ export const apiErrorDetailsSchema = z.looseObject({
   /** Condition and the minimum the rule demands, in basis points. */
   conditionBp: z.number().int().optional(),
   minimumConditionBp: z.number().int().optional(),
-  /** Contract versions, for a mismatch. */
+  /**
+   * The two sides of a mismatch: contract versions, prices checked against `expectedTotal`,
+   * identifiers that had to agree.
+   *
+   * The criterion, which every route follows and which W7 had to align in one of them:
+   * `expected` is the authoritative value of the server and `actual` is what the request
+   * carried. It is the only assignment that lets a panel compose "expected X, got Y" without
+   * knowing which route answered, and `expected` is the half the client did not already know.
+   */
   expected: z.string().optional(),
   actual: z.string().optional(),
 });

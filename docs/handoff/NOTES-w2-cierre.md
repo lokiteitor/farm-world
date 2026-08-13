@@ -10,19 +10,6 @@ se repiten aqui salvo cuando la verificacion las confirmo con una salida concret
 
 ## Pendiente
 
-### 1. `README.md` de la raiz queda escrito, pero su apartado 6 caduca en cada fase
-
-Categoria: cambio en fichero abierto
-Ficheros afectados: `README.md`
-Propietario del cambio: W7-A
-Motivo: el apartado 6, "Estado de implementacion", refleja el arbol al cierre de W2: contrato y modelo de
-datos completos, servicio y cliente pendientes. La tabla por fases del roadmap del GDD y la lista de
-puntos abiertos hay que actualizarlas al cierre de cada flujo de trabajo, y desde luego en W7. El resto
-del documento (arranque, estructura, indice de documentacion, balance) no depende de la fase.
-
-Mitigacion adoptada mientras tanto: el apartado declara en su primera linea la fase a la que corresponde
-el estado, de modo que un lector sabe si esta leyendo informacion vigente.
-
 ## Verificado en el cierre
 
 Salidas reales, ejecutadas desde la raiz del repositorio:
@@ -52,6 +39,25 @@ alineacion de las tablas de `shared/api/README.md` es exactamente lo que la excl
 existe para proteger, y el mismo argumento vale para `backend/prisma/README.md`, que hoy pasa la
 comprobacion por casualidad. Tras el cambio `npx prettier --check .` no senala ningun fichero y
 `make lint` devuelve 0.
+
+### 1. `README.md` de la raiz queda escrito, pero su apartado 6 caduca en cada fase
+
+Aplicado por W7-A (integracion). El apartado 6 del `README.md` refleja el estado al cierre de esta
+ventana: la tabla por fases, las cifras reales de cada suite, la cadena que `make verify` encadena y los
+cinco puntos que siguen abiertos con su propietario.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero abierto
+Ficheros afectados: `README.md`
+Propietario del cambio: W7-A
+Motivo: el apartado 6, "Estado de implementacion", refleja el arbol al cierre de W2: contrato y modelo de
+datos completos, servicio y cliente pendientes. La tabla por fases del roadmap del GDD y la lista de
+puntos abiertos hay que actualizarlas al cierre de cada flujo de trabajo, y desde luego en W7. El resto
+del documento (arranque, estructura, indice de documentacion, balance) no depende de la fase.
+
+Mitigacion adoptada mientras tanto: el apartado declara en su primera linea la fase a la que corresponde
+el estado, de modo que un lector sabe si esta leyendo informacion vigente.
 
 ### 1. `make lint` falla por la salida del generador de Prisma
 

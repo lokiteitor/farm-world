@@ -1,0 +1,26 @@
+{
+  // Type-checking project of the balance calculator.
+  //
+  // Owner: workflow W5-C. It is not part of `make typecheck`, which walks the three npm
+  // projects and not this tool; it exists so that `npx tsc -p tools/balance/tsconfig.json`
+  // checks the calculator with the same strictness as the rest of the repository, and so that
+  // an editor resolves `../../shared/**` the way `tsx` does at run time.
+  //
+  // `include` reaches `shared/` because the calculator imports it as source and not as a built
+  // package: the project has no build step and no published artefact, which is what lets it
+  // read exactly the constants the game reads.
+  //
+  // `typeRoots` points at the backend, which is where `@types/node` is installed and where
+  // `make balance` runs `tsx` from. `tools/` is deliberately not a fourth npm project: the four
+  // `package.json` of the repository are frozen since W1 (plan section 11, rule 2), and adding
+  // one for a tool with no dependencies of its own would be a change to that set for nothing.
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "typeRoots": ["../../backend/node_modules/@types", "../../node_modules/@types"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts", "../../shared/**/*.ts"],
+  "exclude": ["../../shared/**/__tests__/**"]
+}

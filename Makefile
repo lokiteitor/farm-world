@@ -124,9 +124,16 @@ format: ## Aplica Prettier y las correcciones automaticas de ESLint
 
 test: test-unit test-int ## Ejecuta las pruebas unitarias y de integracion
 
-test-unit: sync-types ## Pruebas unitarias de shared y frontend
+# El backend entra en esta puerta desde W7: sus pruebas unitarias no necesitan
+# ni PostgreSQL ni Redis, y quedaban fuera de todo objetivo. Son las que afirman
+# la formula de §78, el recorrido de la maquina de estados de §76, la banda
+# salarial de §102 y el determinismo del generador de bosque
+# (docs/handoff/NOTES-w4c.md 1.2, NOTES-w5b.md 4.6, errata 66).
+test-unit: sync-types ## Pruebas unitarias de shared, backend y frontend
 	@echo "--> shared"
 	@cd shared && npm run --silent test
+	@echo "--> backend"
+	@cd backend && npm run --silent test
 	@echo "--> frontend"
 	@cd frontend && npm run --silent test
 
@@ -171,12 +178,21 @@ balance: ## Genera el informe de KPIs de balance en docs/balance/
 	fi
 	@cd backend && npx tsx ../tools/balance/index.ts
 
+# El recorrido levanta y apaga sus propios procesos de backend y worker, en
+# puertos por encima de 3200 que declara scripts/smoke/env.ts, y con el
+# multiplicador de la seccion 10 del plan (una hora de juego cada diez
+# milisegundos reales). De Compose solo necesita PostgreSQL y Redis: los
+# servicios `backend`, `worker`, `frontend` y `caddy` publican los puertos
+# canonicos y no participan aqui.
+#
+# `tsc -p scripts/smoke/tsconfig.json` se ejecuta antes que el recorrido, con la
+# misma severidad que el resto del repositorio y sobre las mismas fuentes de
+# shared/: una asercion escrita contra un campo que el contrato ya no declara
+# falla al compilar y no como falso negativo en ejecucion (plan seccion 10).
 smoke: ## Recorre el bucle completo por HTTP contra la pila real
-	@if [ ! -f scripts/smoke/smoke.ts ]; then \
-		echo "scripts/smoke/smoke.ts no existe todavia (propietario: W7-A, ver docs/ownership.md)"; \
-		exit 1; \
-	fi
-	@$(COMPOSE) up -d --wait
+	@$(COMPOSE) up -d --wait postgres redis
+	@$(MAKE) migrate
+	@npx tsc -p scripts/smoke/tsconfig.json
 	@cd backend && npx tsx ../scripts/smoke/smoke.ts
 
 smoke-ui: ## Comprobacion manual guiada del cliente en el navegador
@@ -195,14 +211,28 @@ smoke-ui: ## Comprobacion manual guiada del cliente en el navegador
 	@echo "  5. Asignacion de tarea y llegada del evento de fin por WebSocket sin recargar"
 	@echo "  6. Presupuesto de rendimiento en la ruta de medicion (make perf-lab)"
 
-verify: ## Puerta unica: sincronizacion, lint, tipos, pruebas y smoke
+# El orden es el del criterio de aceptacion de la seccion 12 del plan:
+# sincronizacion de shared/, tipos, lint, unitarias, migraciones aplicadas,
+# integracion y, al final, el informe de balance, que es un entregable y no una
+# puerta con umbral. `compose-config` se conserva entre medias porque valida los
+# tres ficheros de Compose sin levantar nada.
+#
+# `smoke` sigue sin formar parte de la cadena, y desde W7 por otro motivo: el
+# recorrido existe y esta en verde, pero necesita Docker y la base de desarrollo
+# migrada, y deja en ella el jugador de cada ejecucion. Una puerta que lo
+# encadenara acumularia jugadores en la maquina donde se ejecuta y acabaria
+# fallando por carga y no por el juego, que es lo que la ventana de correccion de
+# W7 midio. La integracion continua tampoco invoca `verify`: ejecuta los objetivos
+# uno a uno sobre una base efimera. Se invoca aparte, con la pila levantada.
+verify: ## Puerta unica: sincronizacion, tipos, lint, pruebas, migraciones y balance
 	@$(MAKE) check-sync
-	@$(MAKE) lint
 	@$(MAKE) typecheck
+	@$(MAKE) lint
 	@$(MAKE) test-unit
+	@$(MAKE) migrate
 	@$(MAKE) test-int
 	@$(MAKE) compose-config
-	@$(MAKE) smoke
+	@$(MAKE) balance
 	@echo "--> verify completo"
 
 perf-lab: ## Abre la ruta de medicion de fotogramas y draw calls del cliente

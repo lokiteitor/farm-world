@@ -1,37 +1,83 @@
-// Modulo `session`. Sesion: instantanea, anillo de eventos y resumen de regreso.
+// Module `session`: the snapshot, the event replay and the return summary.
 //
-// Andamiaje creado por W3-A con la ruta y la firma definitivas. Propietario del contenido:
-// W6-B, que sustituye el cuerpo de este fichero sin tocar `src/app.ts` ni el registro de
-// rutas (plan seccion 11, regla 3).
+// Owner: workflow W6-B. Replaces the scaffolding workflow W3-A left with the definitive path
+// and signature (plan section 11, rule 3): `src/app.ts` and the route registry were not
+// touched, only the body of this module. `defineStubRoute` became `defineRoute`, in place.
 //
-// Rutas del area `state` que le corresponden, en el orden del contrato:
+// The shape of the module:
 //
-//   GET /api/state/snapshot
-//   GET /api/events
-//   GET /api/session/welcome-back
-//   POST /api/session/welcome-back/ack
+//   `snapshot.ts`    the complete state of a player at one sequence (GDD section 52).
+//   `replay.ts`      the bounded replay of the event ring (plan section 7).
+//   `welcomeBack.ts` the return summary of GDD section 68 with the economics of GDD 124.
+//   `cache.ts`       the short lived cache of that summary (plan section 6.7).
+//   `readModel.ts`   the task and the plot as the snapshot carries them.
+//   `routes.ts`      the HTTP surface, which converts and decides nothing.
 //
-// Cada una responde hoy 501 con el codigo `NOT_IMPLEMENTED` y su clave en los detalles, y ya
-// valida su peticion, arrastra sus guardas y figura en la documentacion OpenAPI: lo unico que
-// falta es el cuerpo.
+// What this module is responsible for, stated once so the boundary is not guessed:
 //
-// Las tres vias de sincronizacion comparten secuencia y reductor (plan 7). El anillo y su lectura
-// ya existen en `lib/events.ts` (`readRing` y `readLog`), y el saldo proyectado y los
-// contadores derivados en `lib/playerView.ts`: la instantanea los compone y no los reescribe.
+//   - It owns the three ways a client learns state that the WebSocket did not deliver, and
+//     nothing else. It writes exactly one column, `Player.lastSummaryGameMs`, and only through
+//     the acknowledgement.
+//   - It is a reader of every other module. Every entity it reports comes from the builder its
+//     owning module publishes, which is what keeps a snapshot and a listing route from
+//     disagreeing about the same row (ADR-0006).
+//   - It stores nothing for the summary. The ledger covers the economic block and the
+//     timestamped domain columns cover the block of events, so no module has to remember to
+//     append to a summary table as things happen (plan section 6.7).
 //
-// Como sustituirlo: cambiar cada `defineStubRoute(app, clave)` por
-// `defineRoute(app, clave, manejador)` con el manejador tipado, que recibe la peticion con
-// `params`, `query` y `body` ya validados y devuelve exactamente `RouteReply<clave>`. Todo
-// camino mutante pasa por `withPlayerAdvanced` de `lib/advancePlayer.ts`, que es lo que
-// devuelve el `seq` que la respuesta secuenciada tiene que llevar.
+// The two entities of the snapshot whose modules are siblings of this phase — `tasks` (W6-A)
+// and `forestry` (W6-C) — are projected in `readModel.ts` of this module, because rule 4 of
+// plan section 11 forbids the import and a snapshot missing them would silently drop every
+// task in flight of a client that had just lost its place. The duplication is bounded to the
+// projection and every derived figure goes through the same shared rule the sibling calls.
 
 import { type FastifyInstance } from 'fastify';
-import { defineStubRoute } from '../../plugins/routes.js';
-import { routeKeysOfArea } from '../../shared/index.js';
+import { registerSessionRoutes as registerRoutes } from './routes.js';
 
-/** Registra las rutas del area `state`. Invocada una vez por `src/app.ts`. */
+/** Registers the routes of the area. Invoked once by `src/app.ts`. */
 export function registerSessionRoutes(app: FastifyInstance): void {
-  for (const key of routeKeysOfArea('state')) {
-    defineStubRoute(app, key);
-  }
+  registerRoutes(app);
 }
+
+export {
+  WELCOME_BACK_CACHE_TTL_REAL_MS,
+  clearCachedWelcomeBack,
+  readCachedWelcomeBack,
+  writeCachedWelcomeBack,
+} from './cache.js';
+
+export { buildReplay, type ReplayInput } from './replay.js';
+
+export {
+  MAX_SNAPSHOT_NOTICES,
+  buildSnapshot,
+  buildWorldInfo,
+  loadRecentNotices,
+} from './snapshot.js';
+
+export {
+  loadActiveTaskDtos,
+  loadForestPlotDtos,
+  forestPlotCells,
+  taskProgressBp,
+  toForestPlotDto,
+  toTaskDto,
+  type ForestPlotRow,
+  type StandingTreeRow,
+  type TaskRow,
+} from './readModel.js';
+
+export {
+  MIN_PENDING_ELAPSED_GAME_MS,
+  REVENUE_LEDGER_TYPES,
+  buildEconomy,
+  buildWelcomeBack,
+  fieldTransitionsIn,
+  liquidationsOf,
+  storageOf,
+  summaryWindow,
+  treeStageChangesIn,
+  wastedOf,
+  welcomeBackPending,
+  type SummaryWindow,
+} from './welcomeBack.js';

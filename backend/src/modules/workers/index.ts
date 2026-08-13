@@ -1,37 +1,89 @@
-// Modulo `workers`. Trabajadores y pool de contratacion por jugador.
+// Module `workers`: the payroll, the procedural hiring pool and the two transitions of GDD
+// sections 100 to 112.
 //
-// Andamiaje creado por W3-A con la ruta y la firma definitivas. Propietario del contenido:
-// W5-B, que sustituye el cuerpo de este fichero sin tocar `src/app.ts` ni el registro de
-// rutas (plan seccion 11, regla 3).
+// Owner: workflow W5-B. Replaces the scaffolding workflow W3-A left with the definitive path
+// and signature (plan section 11, rule 3): `src/app.ts` and the route registry were not
+// touched, only the body of this module. Substituting a scaffold is changing
+// `defineStubRoute(app, key)` for `defineRoute(app, key, handler)` inside the module, and
+// that is all that was done.
 //
-// Rutas del area `workers` que le corresponden, en el orden del contrato:
+// The shape of the module, and why it is split the way it is:
 //
-//   GET /api/workers
-//   GET /api/workers/pool
-//   POST /api/workers/hire
-//   POST /api/workers/:workerId/fire
+//   - `pool.ts` is pure. It is the procedural rule of GDD section 102 and nothing else:
+//     skill uniform over 30 % to 90 %, salary on the fitted line of the three published
+//     examples perturbed by noise and floored. Deterministic from the world seed, the player
+//     and the listing instant, with no `Math.random` anywhere, so a pool can be asserted.
+//   - `service.ts` is the internal API. It owns the payroll reads, the two write paths and
+//     the four rules a later phase consumes: idleness (GDD sections 104 and 109), the farm a
+//     worker belongs to through his home (GDD section 108), the reservation of a worker for a
+//     task and its release, and the skill progression of GDD sections 103 and 105.
+//   - `jobs.ts` is the handler of `WORKER_POOL_REFRESH`, registered for real by
+//     `src/handlers.ts`, so `farm_world_scheduled_events_unhandled_total` no longer counts
+//     this module.
+//   - `routes.ts` is the HTTP surface, deliberately thin.
 //
-// Cada una responde hoy 501 con el codigo `NOT_IMPLEMENTED` y su clave en los detalles, y ya
-// valida su peticion, arrastra sus guardas y figura en la documentacion OpenAPI: lo unico que
-// falta es el cuerpo.
-//
-// El pool es por jugador, con `region` reservado: un pool global introduciria contencion entre
-// jugadores que el MVP evita explicitamente (plan 5.2). El salario se negocia por candidato,
-// que es la unica tasa de coste que vive en una fila y no en el catalogo.
-//
-// Como sustituirlo: cambiar cada `defineStubRoute(app, clave)` por
-// `defineRoute(app, clave, manejador)` con el manejador tipado, que recibe la peticion con
-// `params`, `query` y `body` ya validados y devuelve exactamente `RouteReply<clave>`. Todo
-// camino mutante pasa por `withPlayerAdvanced` de `lib/advancePlayer.ts`, que es lo que
-// devuelve el `seq` que la respuesta secuenciada tiene que llevar.
+// Housing capacity is asked of `modules/farms/service.ts`, a module of an earlier phase, and
+// never counted here. `machinery` and `economy` are siblings of this phase and are not
+// imported (plan section 11, rule 4); what the task engine of workflow W6-A needs from this
+// module is exported below.
 
-import { type FastifyInstance } from 'fastify';
-import { defineStubRoute } from '../../plugins/routes.js';
-import { routeKeysOfArea } from '../../shared/index.js';
+export { registerWorkersRoutes } from './routes.js';
 
-/** Registra las rutas del area `workers`. Invocada una vez por `src/app.ts`. */
-export function registerWorkersRoutes(app: FastifyInstance): void {
-  for (const key of routeKeysOfArea('workers')) {
-    defineStubRoute(app, key);
-  }
-}
+export { OWNED_EVENT_KIND, workerPoolRefreshHandler } from './jobs.js';
+
+export {
+  POOL_SKILL_BAND,
+  askingSalary,
+  candidateSkillBp,
+  fittedSalary,
+  generateCandidate,
+  generatePool,
+  hashText,
+  poolGeneration,
+  salaryNoiseFactor,
+  type GeneratedCandidate,
+  type PoolSeed,
+} from './pool.js';
+
+export {
+  ACTIVE_WORKER_STATUSES,
+  POOL_REFRESH_INTERVAL_GAME_MS,
+  POOL_REF_TYPE,
+  RESERVED_WORKER_STATUSES,
+  accruedWages,
+  applyTaskCompletion,
+  buildPoolReply,
+  buildWorkersReply,
+  canOperateFarmMachinery,
+  dismissWorker,
+  ensurePool,
+  findLiveWorker,
+  hireCandidate,
+  homeSlots,
+  homeUpsertedFrames,
+  loadFarmWorkers,
+  loadListedCandidates,
+  loadPlayerWorkers,
+  nextPoolRefreshAt,
+  payrollPerGameHour,
+  poolCatchUp,
+  poolUpsertedFrame,
+  releaseWorkerFromTask,
+  replacePool,
+  requireIdleWorker,
+  requireWorker,
+  requireWorkerOfFarm,
+  reserveWorkerForTask,
+  schedulePoolRefresh,
+  toCandidateDto,
+  toCandidateRecord,
+  toWorkerDto,
+  toWorkerRecord,
+  workerRemovedFrame,
+  workerUpsertedFrame,
+  type CandidateRecord,
+  type HireInput,
+  type HireOutcome,
+  type PoolWriteOutcome,
+  type WorkerRecord,
+} from './service.js';

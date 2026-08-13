@@ -17,6 +17,7 @@
 //     correct answer.
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { completeIdempotency } from '../plugins/auth.js';
 import { LedgerType, Money } from '../shared/index.js';
 import { bearer, createHarness, registerViaHttp, type Harness } from './harness.js';
 
@@ -143,19 +144,68 @@ describe('la cabecera Idempotency-Key', () => {
     const player = await registerViaHttp(harness, 'idem-5xx');
     const key = `idem-5xx-${harness.runId}`;
 
-    // A stub route that moves money answers 501, which is a server failure: the record must be
-    // removed so a retry once the module lands is not answered with a stale 501.
-    const stub = await harness.app.inject({
-      method: 'POST',
-      url: '/api/machines',
-      headers: { ...bearer(player.accessToken), 'idempotency-key': key },
-      payload: { farmId: '00000000-0000-4000-8000-000000000000', type: 'TRACTOR' },
+    // Exercised against `completeIdempotency` and not through a route on purpose. The earlier
+    // version of this test drove a 501 through a money-moving route that was still scaffolding,
+    // which stopped working the moment `POST /api/machines` landed, and cannot work again: every
+    // route the contract marks as moving money is now implemented. The invariant, however, still
+    // has to hold for any 5xx a real handler produces.
+    const record = await harness.prisma.requestIdempotency.create({
+      data: {
+        playerId: player.playerId,
+        key,
+        method: 'POST',
+        path: '/api/market/sell',
+        requestHash: `hash-${harness.runId}`,
+        createdAtRealMs: BigInt(0),
+      },
+      select: { id: true },
     });
-    expect(stub.statusCode).toBe(501);
+
+    const request = {
+      idempotency: { id: record.id, key },
+      server: harness.app,
+      log: harness.app.log,
+    } as unknown as Parameters<typeof completeIdempotency>[0];
+    const reply = { statusCode: 503 } as unknown as Parameters<typeof completeIdempotency>[1];
+
+    await completeIdempotency(request, reply, JSON.stringify({ error: 'boom' }));
 
     const records = await harness.prisma.requestIdempotency.count({
       where: { playerId: player.playerId, key },
     });
     expect(records).toBe(0);
+  });
+
+  it('si almacena la respuesta de un exito, que es lo que reproduce el reintento', async () => {
+    const player = await registerViaHttp(harness, 'idem-2xx');
+    const key = `idem-2xx-${harness.runId}`;
+
+    const record = await harness.prisma.requestIdempotency.create({
+      data: {
+        playerId: player.playerId,
+        key,
+        method: 'POST',
+        path: '/api/market/sell',
+        requestHash: `hash-ok-${harness.runId}`,
+        createdAtRealMs: BigInt(0),
+      },
+      select: { id: true },
+    });
+
+    const request = {
+      idempotency: { id: record.id, key },
+      server: harness.app,
+      log: harness.app.log,
+    } as unknown as Parameters<typeof completeIdempotency>[0];
+    const reply = { statusCode: 200 } as unknown as Parameters<typeof completeIdempotency>[1];
+
+    await completeIdempotency(request, reply, JSON.stringify({ ok: true }));
+
+    const stored = await harness.prisma.requestIdempotency.findUniqueOrThrow({
+      where: { id: record.id },
+      select: { statusCode: true, responseBody: true },
+    });
+    expect(stored.statusCode).toBe(200);
+    expect(stored.responseBody).toEqual({ ok: true });
   });
 });

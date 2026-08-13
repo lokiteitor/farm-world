@@ -15,8 +15,16 @@ withDefaults(
     size?: 'md' | 'sm';
     disabled?: boolean;
     busy?: boolean;
-    /** Why the button is disabled, in Spanish, from the shared message table. */
-    reason?: string;
+    /**
+     * Why the button is disabled, in Spanish, from the shared message table.
+     *
+     * `| undefined` explicitly, because `exactOptionalPropertyTypes` is on: without it
+     * the property may be absent but may not be bound to `undefined`, and "the reason of
+     * this control, when there is one" is exactly an expression that evaluates to
+     * `undefined`. Every panel of W4 hit it and each worked around it separately
+     * (docs/handoff/NOTES-w4f.md, section 4.5).
+     */
+    reason?: string | undefined;
     type?: 'button' | 'submit';
   }>(),
   { variant: 'secondary', size: 'md', type: 'button' },

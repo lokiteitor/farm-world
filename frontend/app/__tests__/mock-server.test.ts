@@ -102,14 +102,18 @@ describe('el servidor simulado', () => {
     });
 
     const before = sync.lastAppliedSeq;
-    const reply = await apiCall('POST /api/farms', { body: { name: 'Granja renombrada' } });
+    const reply = await apiCall('POST /api/farms', { body: { name: 'Granja nueva' } });
     unsubscribe();
 
     expect(reply.seq).toBeGreaterThan(before);
     expect(seen.at(-1)).toBe(reply.seq);
 
     sync.applyMutationReply(reply);
-    expect(useFarmsStore().primary?.name).toBe('Granja renombrada');
+    // Founding creates a second holding, which is what the real route does (GDD section 31):
+    // the farm of the sample world keeps its name and the new one arrives beside it.
+    expect(useFarmsStore().count).toBe(2);
+    expect(useFarmsStore().get(reply.result.farm.id)?.name).toBe('Granja nueva');
+    expect(useFarmsStore().primary?.name).toBe('Granja del origen');
     expect(sync.lastAppliedSeq).toBe(reply.seq);
   });
 
@@ -131,7 +135,7 @@ describe('el servidor simulado', () => {
       sync.applyFrame(frame);
     }
     expect(sync.discardedCount).toBeGreaterThan(discardedBefore);
-    expect(useFarmsStore().primary?.name).toBe('Granja del eco');
+    expect(useFarmsStore().get(reply.result.farm.id)?.name).toBe('Granja del eco');
   });
 
   it('rechaza la quinta maquina en un garaje de cuatro plazas', async () => {

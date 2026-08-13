@@ -161,6 +161,17 @@ describe('operation requirements (GDD section 90)', () => {
       expect(requirement.requiresCrop).toBe(requirement.operation === 'SEED');
     }
   });
+
+  it('reinicia las malezas solo al cultivar (GDD 78 y 89)', () => {
+    // GDD 78 enumera una unica via en el MVP, `CULTIVATE`, y deja los herbicidas fuera.
+    // GDD 89 recoge el mismo efecto como `sideEffect` exclusivo del cultivador. Cualquier
+    // otra operacion que lo reiniciara seria una decision de balance tomada en el catalogo.
+    for (const requirement of Object.values(OPERATION_REQUIREMENTS)) {
+      expect(requirement.resetsWeedLevel, `${requirement.operation} reinicia las malezas`).toBe(
+        requirement.operation === 'CULTIVATE',
+      );
+    }
+  });
 });
 
 describe('balance curves', () => {

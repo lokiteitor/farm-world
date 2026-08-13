@@ -58,6 +58,30 @@ export const useFarmsStore = defineStore('farms', () => {
   }
 
   /**
+   * Garage occupancy of a farm, as the machinery replies report it.
+   *
+   * `garageSlotsUsed` and `garageSlotsTotal` of the purchase and of the sale are the
+   * aggregate over the live garages of one farm (`modules/machinery/service.ts`,
+   * `garageSlotsOf`), which is exactly what `machineSlots` of this row means, so the two
+   * are the same reading and applying one over the other is a replacement and never a
+   * delta. Without this the counter would only reach the client through the
+   * `BUILDING_UPSERTED` frame, and a client with no live socket would keep offering a
+   * garage that a sale has already emptied (docs/handoff/NOTES-w5f.md, section 3.4).
+   *
+   * There is deliberately no counterpart for the worker homes: `homeSlotsUsed` of the
+   * hire and of the dismissal is the aggregate over the whole holding and not over one
+   * farm (`modules/workers/service.ts`, `homeSlots`), so it is kept where its scope is
+   * true, in the workers store.
+   */
+  function applyMachineSlots(farmId: string, used: number, total: number): void {
+    const farm = collection.get(farmId);
+    if (farm === undefined) {
+      return;
+    }
+    collection.upsert({ ...farm, machineSlots: { used, total } });
+  }
+
+  /**
    * Stored quantity in the unit the interface shows. The server never divides, so that a
    * rounded figure cannot re-enter a calculation; the divisor travels in the catalogue
    * and the division happens here (plan section 5.2).
@@ -87,6 +111,7 @@ export const useFarmsStore = defineStore('farms', () => {
     freeMachineSlots,
     freeWorkerSlots,
     occupancyBp,
+    applyMachineSlots,
     storedForDisplay,
   };
 });

@@ -80,7 +80,13 @@ describe('el reparto de las variables de .env.example', () => {
     for (const name of CONTAINER_ENV_VARS) {
       expect(declared.has(name)).toBe(false);
     }
-    expect(CONTAINER_ENV_VARS).toContain('METRICS_PORT');
+    // `METRICS_PORT` was one of these until W7: the template now declares it, because
+    // `docker-compose.yml` injects it into the worker and Prometheus scrapes the port it
+    // names (docs/handoff/NOTES-w3a.md 1.2). What the assertion protects is the direction of
+    // the move: it belongs to the variables the service reads, not to the injected ones.
+    expect(CONTAINER_ENV_VARS).not.toContain('METRICS_PORT');
+    expect(SERVICE_ENV_VARS).toContain('METRICS_PORT');
+    expect(declared.has('METRICS_PORT')).toBe(true);
   });
 });
 

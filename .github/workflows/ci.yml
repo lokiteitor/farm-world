@@ -49,6 +49,15 @@ jobs:
       - name: Comprobar que las copias de shared/ no divergen
         run: make check-sync
 
+      # `backend/src/generated/prisma` is git-ignored and the backend imports its
+      # types, so type-checking and the backend unit suite need it here too, not
+      # only in the integration job. It needs no database: `prisma generate` reads
+      # the schema.
+      - name: Generar el cliente de Prisma
+        run: make generate
+        env:
+          DATABASE_URL: postgresql://farmworld:farmworld@localhost:5432/farmworld?schema=public
+
       - name: Validar los ficheros de Compose
         run: make compose-config
 
@@ -103,9 +112,12 @@ jobs:
       SCHEDULE_HORIZON_REAL_MS: '86400000'
       WORLD_SEED: '20260811'
       PORT: '3000'
+      METRICS_PORT: '9464'
       LOG_LEVEL: warn
       DEV_ENDPOINTS: 'true'
-      CORS_ORIGIN: http://localhost:3001
+      # The published port of the client, FRONTEND_DEV_PORT. It was 3001 here, which
+      # was the dev server port before it was parameterised (docs/handoff/NOTES-w2-5-parcheo.md 2.3).
+      CORS_ORIGIN: http://localhost:3100
 
     steps:
       - uses: actions/checkout@v4

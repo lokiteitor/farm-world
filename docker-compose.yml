@@ -136,10 +136,12 @@ services:
 
   worker:
     <<: *backend-image
-    # The W1 worker is a stub that logs one line and exits; restarting it would
-    # produce a crash loop. Workflow W3 replaces it with the long-lived BullMQ
-    # consumer, at which point this becomes `unless-stopped`.
-    restart: 'no'
+    # `backend/src/worker.ts` is the long-lived BullMQ consumer since W3, with the
+    # reconciliation sweep at start-up and every minute and an orderly shutdown on
+    # SIGTERM, so the policy the W1 stub needed no longer applies: a worker that
+    # dies has to come back, or the scheduled events pile up until the next request
+    # of each player repairs them (docs/handoff/NOTES-W1.md 4, NOTES-w3a.md 1.1).
+    restart: unless-stopped
     command: ['npm', 'run', 'dev:worker']
     env_file: *env-file
     environment:

@@ -13,29 +13,34 @@ import vueParser from 'vue-eslint-parser';
 // Backend domain modules (plan section 4). Each one is a zone: a module may
 // import from its own directory, from ../../lib, ../../plugins and ../../shared,
 // and from nothing else inside src/.
-const BACKEND_MODULES = [
-  'auth',
-  'world',
-  'land',
-  'farms',
-  'fields',
-  'machinery',
-  'workers',
-  'tasks',
-  'economy',
-  'session',
-  'forestry',
+// Backend domain modules grouped by the workflow that authors them. Rule 4 of
+// plan section 11 forbids imports between siblings *of the same phase*, because
+// those are written concurrently and would deadlock on each other. A module of a
+// later phase may import one of an earlier phase, which is already frozen: that
+// is how `land`, `fields`, `farms` and `forestry` reach `world/service.ts`.
+const BACKEND_MODULE_PHASES = [
+  ['auth', 'world'],
+  ['land', 'farms', 'fields'],
+  ['machinery', 'workers', 'economy'],
+  ['tasks', 'session', 'forestry'],
 ];
 
-/** Zones that forbid imports between sibling modules of the same phase. */
-const siblingModuleZones = BACKEND_MODULES.map((moduleName) => ({
-  target: `./backend/src/modules/${moduleName}`,
-  from: './backend/src/modules',
-  except: [`./${moduleName}`],
-  message:
-    'No imports between sibling backend modules (plan section 11, rule 4). ' +
-    'Move the shared piece to backend/src/lib or to shared/.',
-}));
+/**
+ * One zone per module: it may import itself and every module authored in a
+ * strictly earlier phase, and nothing else under modules/.
+ */
+const siblingModuleZones = BACKEND_MODULE_PHASES.flatMap((phase, phaseIndex) => {
+  const earlier = BACKEND_MODULE_PHASES.slice(0, phaseIndex).flat();
+  return phase.map((moduleName) => ({
+    target: `./backend/src/modules/${moduleName}`,
+    from: './backend/src/modules',
+    except: [moduleName, ...earlier].map((name) => `./${name}`),
+    message:
+      'No imports between sibling backend modules of the same phase (plan section 11, ' +
+      'rule 4). Import a module of an earlier phase, or move the shared piece to ' +
+      'backend/src/lib or to shared/.',
+  }));
+});
 
 export default tseslint.config(
   {
@@ -101,6 +106,11 @@ export default tseslint.config(
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-var': 'error',
       'prefer-const': 'error',
+      // The comma operator. It is valid syntax, it type-checks, and it silently discards
+      // everything but its last operand: `${(value / 100, 1)}` published the literal 1 in
+      // the balance report for a whole workflow, where 147,64 belonged (W7, hallazgo H1 de
+      // docs/revision-formulas.md). Nothing in this repository needs it.
+      'no-sequences': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
       'import/no-duplicates': 'error',
       'import/order': [

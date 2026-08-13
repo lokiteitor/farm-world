@@ -196,6 +196,102 @@ export function projectWeedLevel(
   return clampBp(level > maxBp ? maxBp : level);
 }
 
+export interface PhasedWeedProjectionInput {
+  readonly weedLevelBp: Bp;
+  readonly updatedAtGameMs: GameMs;
+  readonly toGameMs: GameMs;
+  /** Stored state of the field, which governs any stretch outside the sown timeline. */
+  readonly cropCycleState: CropCycleState;
+  /** Instant the field was sown, or null when it carries no crop. */
+  readonly seededAtGameMs: GameMs | null;
+  readonly crop: CropDefinition;
+}
+
+/**
+ * Ceiling on the segments one settlement produces: the three timed phases, plus
+ * `READY_TO_HARVEST`, plus the stretch before sowing. It bounds the loop rather than
+ * trusting the phase durations to be positive.
+ */
+const MAX_PHASE_SEGMENTS = TIMED_CROP_PHASE_ORDER.length + 2;
+
+/**
+ * Weed level carried forward across the phase boundaries of the cycle (GDD section 78).
+ *
+ * Weeds grow only while the field is `GROWING`, `READY_TO_HARVEST` or `VIRGIN`, so an
+ * interval that spans several phases cannot be projected with a single state and neither
+ * of the two single state readings is right. A field sown at t0 and read at t0 + 200 h is
+ * stored as `SEEDED`, because no job has run yet: projecting with the stored state grows no
+ * weeds at all, and projecting with the state it has now grows them across the six hours of
+ * `SEEDED` and the twelve of `GERMINATING`, where GDD section 78 says they do not grow.
+ * Both are wrong by more than a thousand basis points on the yield of GDD section 83.
+ *
+ * So the interval is cut at the boundaries the growth timeline implies and each piece is
+ * accrued with the state that was in force during it. It lives here, and not in the server,
+ * because the panel projects the same field with the same rule: two implementations of this
+ * is exactly how the figure a panel shows and the figure the server validates come to
+ * differ (plan section 8).
+ *
+ * Rounding: each segment truncates towards zero inside `projectWeedLevel`, so a settlement
+ * over four segments loses at most four basis points against a single one, always in the
+ * direction that does not favour the player.
+ */
+export function projectWeedLevelAcrossPhases(
+  input: PhasedWeedProjectionInput,
+  growthStates: readonly CropCycleState[] = WEED_GROWTH_STATES,
+  maxBp: number = WEED_LEVEL_MAX_BP,
+): Bp {
+  let level = input.weedLevelBp;
+  let cursor = input.updatedAtGameMs;
+  const accrue = (state: CropCycleState, fromGameMs: GameMs, toGameMs: GameMs): void => {
+    level = projectWeedLevel(
+      {
+        weedLevelBp: level,
+        updatedAtGameMs: fromGameMs,
+        toGameMs,
+        cropCycleState: state,
+        crop: input.crop,
+      },
+      growthStates,
+      maxBp,
+    );
+  };
+
+  if (input.toGameMs <= cursor) {
+    return level;
+  }
+  const seeded = input.seededAtGameMs;
+  const timed = (TIMED_CROP_PHASE_ORDER as readonly CropCycleState[]).includes(
+    input.cropCycleState,
+  );
+  if (seeded === null || !timed) {
+    // None of the remaining states of GDD section 76 moves on by the passage of time: they
+    // need a player action or the harvest configuration, so the stretch is a single one.
+    accrue(input.cropCycleState, cursor, input.toGameMs);
+    return level;
+  }
+
+  if (cursor < seeded) {
+    // Unreachable in practice, because sowing settles the attribute and therefore moves its
+    // timestamp to the instant of sowing. Kept because a stretch before the timeline has no
+    // phase, and answering with the stored state is the only total answer.
+    const end = seeded < input.toGameMs ? seeded : input.toGameMs;
+    accrue(input.cropCycleState, cursor, end);
+    cursor = end;
+  }
+
+  for (let guard = 0; cursor < input.toGameMs && guard < MAX_PHASE_SEGMENTS; guard += 1) {
+    const phase = projectCropPhase(seeded, cursor, input.crop);
+    const boundary = phase.nextBoundaryGameMs;
+    const end = boundary === null || boundary > input.toGameMs ? input.toGameMs : boundary;
+    if (end <= cursor) {
+      break;
+    }
+    accrue(phase.state, cursor, end);
+    cursor = end;
+  }
+  return level;
+}
+
 export interface FertilityProjectionInput {
   readonly fertilityBp: Bp;
   readonly updatedAtGameMs: GameMs;

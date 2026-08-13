@@ -7,22 +7,6 @@ y `fw-palette:end`.
 
 ## Pendiente
 
-### 1. El puerto del servidor de desarrollo esta ocupado en esta maquina
-
-Categoria: cambio en fichero congelado
-Ficheros afectados: `frontend/nuxt.config.ts`
-Propietario del cambio: W1 (cerrado), a aplicar por W7-A
-
-`devServer.port` vale 3001, que es el puerto que la ventana de parcheo W2.5 dejo de usar: `.env.example`
-publica el cliente en `FRONTEND_DEV_PORT=3100` y el `Makefile` anuncia 3100 en sus objetivos
-informativos. En esta maquina 3001 esta ocupado por otro proyecto, de modo que `npx nuxt dev` sin
-argumentos arranca en un puerto arbitrario o falla. Conviene leer el valor del entorno, por ejemplo
-`port: Number(process.env.FRONTEND_DEV_PORT ?? 3100)`, que es lo que hace que el `Makefile`, el fichero
-de entorno y el cliente digan lo mismo.
-
-Mitigacion adoptada: la verificacion de esta fase se ejecuto con `npx nuxt dev --port 3100`. Ningun
-fichero de este ambito codifica un puerto.
-
 ### 2. Dos rutas sin fila en la tabla de propiedad
 
 Categoria: cambio en fichero de otro propietario
@@ -185,3 +169,24 @@ recoja:
 ## Resuelto
 
 (nada todavia: ninguna nota de este fichero se ha aplicado)
+
+### 1. El puerto del servidor de desarrollo esta ocupado en esta maquina
+
+Aplicado por W7-A (integracion), con la forma exacta que la nota propone:
+`port: Number(process.env.FRONTEND_DEV_PORT ?? 3100)`.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero congelado
+Ficheros afectados: `frontend/nuxt.config.ts`
+Propietario del cambio: W1 (cerrado), a aplicar por W7-A
+
+`devServer.port` vale 3001, que es el puerto que la ventana de parcheo W2.5 dejo de usar: `.env.example`
+publica el cliente en `FRONTEND_DEV_PORT=3100` y el `Makefile` anuncia 3100 en sus objetivos
+informativos. En esta maquina 3001 esta ocupado por otro proyecto, de modo que `npx nuxt dev` sin
+argumentos arranca en un puerto arbitrario o falla. Conviene leer el valor del entorno, por ejemplo
+`port: Number(process.env.FRONTEND_DEV_PORT ?? 3100)`, que es lo que hace que el `Makefile`, el fichero
+de entorno y el cliente digan lo mismo.
+
+Mitigacion adoptada: la verificacion de esta fase se ejecuto con `npx nuxt dev --port 3100`. Ningun
+fichero de este ambito codifica un puerto.

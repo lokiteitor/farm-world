@@ -1,38 +1,77 @@
-// Modulo `machinery`. Maquinaria: catalogo, compra con plaza de garaje, venta y reparacion.
+// Module `machinery`: the catalogue, the purchase with a garage slot, the sale, the repair
+// and the wear (GDD sections 87 to 99).
 //
-// Andamiaje creado por W3-A con la ruta y la firma definitivas. Propietario del contenido:
-// W5-A, que sustituye el cuerpo de este fichero sin tocar `src/app.ts` ni el registro de
-// rutas (plan seccion 11, regla 3).
+// Owner: workflow W5-A. It replaces the scaffolding workflow W3-A left with the definitive
+// path and signature (plan section 11, rule 3): `src/app.ts`, `src/handlers.ts` and the route
+// registry were not touched, only the body of this module. `defineStubRoute` became
+// `defineRoute`, in place.
 //
-// Rutas del area `machinery` que le corresponden, en el orden del contrato:
+// The shape of the module, which is a chain and never a loop:
 //
-//   GET /api/machines
-//   GET /api/machines/catalog
-//   POST /api/machines
-//   POST /api/machines/:machineId/sell
-//   POST /api/machines/:machineId/repair
+//   `record.ts`    the row, its four derived readings and the reading side. No writes.
+//   `readModel.ts` the entities of the contract and the catalogue reply.
+//   `service.ts`   the domain: buying, selling, repairing, completing a repair and wearing.
+//   `jobs.ts`      the handler of `MACHINE_REPAIR_COMPLETE`.
+//   `routes.ts`    the HTTP surface, which converts between wire and domain types.
 //
-// Cada una responde hoy 501 con el codigo `NOT_IMPLEMENTED` y su clave en los detalles, y ya
-// valida su peticion, arrastra sus guardas y figura en la documentacion OpenAPI: lo unico que
-// falta es el cuerpo.
+// WHAT ENTERS THE MVP OF THIS SYSTEM (GDD section 99), and where each item is:
 //
-// La reparacion es un evento agendado con duracion, exige taller y activa `IN_REPAIR` (plan 2.2,
-// resolucion de §93, §29 y §95). El desgaste se aplica por evento y prorrateado sobre las
-// horas trabajadas, nunca por inactividad (§93).
+//   Catalogue of six agricultural machines            `shared/config/machines.ts`
+//   Operation to machinery compatibility table        `shared/rules/machinery.ts`
+//   Duration from workSpeed, condition and skill      `shared/rules/duration.ts`, used by W6
+//   Wear per hour worked                              `applyMachineWear` of `service.ts`
+//   maintenanceCost and operatingCost as separate     `shared/rules/holding.ts`, `lib/accrual`
+//   Repair in the workshop                            `repairMachine` of `service.ts`
+//   Garage limit blocking purchases                   `resolveGarageSlot` of `service.ts`
 //
-// Como sustituirlo: cambiar cada `defineStubRoute(app, clave)` por
-// `defineRoute(app, clave, manejador)` con el manejador tipado, que recibe la peticion con
-// `params`, `query` y `body` ya validados y devuelve exactamente `RouteReply<clave>`. Todo
-// camino mutante pasa por `withPlayerAdvanced` de `lib/advancePlayer.ts`, que es lo que
-// devuelve el `seq` que la respuesta secuenciada tiene que llevar.
+// And what does not: random breakdowns, so `BROKEN` is never written; the incremental filling
+// of the trailer, so the harvest goes straight to the silo (GDD section 97); required power
+// as a numeric restriction; and degradation while idle, which is why the wear mark only moves
+// when hours worked are accounted for.
+//
+// WHAT THIS MODULE DOES NOT DO. It does not create, validate or complete a task: that is the
+// engine of workflow W6-A, which imports the two pieces this module exposes for it,
+// `requireAssignableMachines` and `applyMachineWear`. Nor does it charge maintenance or
+// operation: both are integrals over validity intervals computed by `lib/accrual.ts`, and
+// this module's whole contribution to them is writing `acquiredGameMs` and `disposedGameMs`.
 
-import { type FastifyInstance } from 'fastify';
-import { defineStubRoute } from '../../plugins/routes.js';
-import { routeKeysOfArea } from '../../shared/index.js';
+export { registerMachineryRoutes } from './routes.js';
 
-/** Registra las rutas del area `machinery`. Invocada una vez por `src/app.ts`. */
-export function registerMachineryRoutes(app: FastifyInstance): void {
-  for (const key of routeKeysOfArea('machinery')) {
-    defineStubRoute(app, key);
-  }
-}
+export {
+  MACHINE_REF_TYPE,
+  MACHINE_SELECT,
+  REPAIR_MS_PER_CONDITION_POINT,
+  assignmentError,
+  definitionOf,
+  findLiveMachine,
+  isAssignable,
+  loadMachines,
+  machineAssignmentRefusal,
+  repairCostBetween,
+  repairDurationBetween,
+  requireMachine,
+  resaleValueOf,
+  scheduledRestorationBp,
+  type MachineRecord,
+} from './record.js';
+
+export { buildCatalogReply, machineUpsertedFrame, toMachineDto } from './readModel.js';
+
+export {
+  applyMachineWear,
+  applyMachineWearOverInterval,
+  buyMachine,
+  completeRepair,
+  garageSlotsOf,
+  repairMachine,
+  requireAssignableMachines,
+  sellMachine,
+  type BuyMachineInput,
+  type BuyMachineOutcome,
+  type RepairMachineInput,
+  type RepairMachineOutcome,
+  type SellMachineInput,
+  type SellMachineOutcome,
+} from './service.js';
+
+export { OWNED_EVENT_KIND, machineRepairCompleteHandler } from './jobs.js';

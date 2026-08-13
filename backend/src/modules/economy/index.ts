@@ -1,37 +1,103 @@
-// Modulo `economy`. Economia: existencias, precios fijos, libro mayor y venta.
+// Module `economy`: stock, fixed prices, the ledger, the sale and the debt policy.
 //
-// Andamiaje creado por W3-A con la ruta y la firma definitivas. Propietario del contenido:
-// W5-C, que sustituye el cuerpo de este fichero sin tocar `src/app.ts` ni el registro de
-// rutas (plan seccion 11, regla 3).
+// Owner: workflow W5-C. Replaces the scaffolding workflow W3-A left with the definitive path
+// and signature (plan section 11, rule 3): `src/app.ts` and the route registry were not
+// touched, only the body of this module. `defineStubRoute` became `defineRoute`, in place.
 //
-// Rutas del area `economy` que le corresponden, en el orden del contrato:
+// The shape of the module:
 //
-//   GET /api/inventory
-//   GET /api/market/prices
-//   GET /api/economy/ledger
-//   POST /api/market/sell
+//   `market.ts`      the price of GDD section 123 and the sale of stock.
+//   `readModel.ts`   the inventory as the contract carries it (GDD sections 27, 49 and 136).
+//   `ledger.ts`      the query of the history, paged by sequence.
+//   `debt.ts`        the readable half of the debt policy of plan section 6.6.
+//   `liquidation.ts` the forced liquidation, in the published order.
+//   `jobs.ts`        the registration of the liquidation as an extension of the sweep.
+//   `routes.ts`      the HTTP surface, which converts and decides nothing.
 //
-// Cada una responde hoy 501 con el codigo `NOT_IMPLEMENTED` y su clave en los detalles, y ya
-// valida su peticion, arrastra sus guardas y figura en la documentacion OpenAPI: lo unico que
-// falta es el cuerpo.
+// What this module is responsible for, stated once so the boundary is not guessed:
 //
-// Vender es la unica via de ingreso y por tanto sigue disponible con saldo negativo (plan 6.6).
-// La liquidacion forzosa se registra como extension del barrido con
-// `registerSettleSweepHook` de `lib/jobs.ts`, sin reabrir `lib/advancePlayer.ts`.
+//   - It is the only place that turns stock into money. Farms hold the stock and
+//     `modules/farms/service.ts` writes it; this module decides what a unit is worth and
+//     when it changes hands.
+//   - It owns the debt policy: the refusal a spending path raises while the balance is
+//     negative, the overdraft interest as a fourth accrual with a rate of zero, and the
+//     forced liquidation of plan section 6.6.
+//   - It does not create, move or retire machines, workers or buildings as a service to
+//     anybody. The forced liquidation disposes of them, which is the one path in the game
+//     where an asset leaves the holding without the player asking, and it is described in
+//     `liquidation.ts` rather than exposed as an API.
 //
-// Como sustituirlo: cambiar cada `defineStubRoute(app, clave)` por
-// `defineRoute(app, clave, manejador)` con el manejador tipado, que recibe la peticion con
-// `params`, `query` y `body` ya validados y devuelve exactamente `RouteReply<clave>`. Todo
-// camino mutante pasa por `withPlayerAdvanced` de `lib/advancePlayer.ts`, que es lo que
-// devuelve el `seq` que la respuesta secuenciada tiene que llevar.
+// The three siblings of this phase — `machinery`, `workers` and `economy` — never import each
+// other (plan section 11, rule 4), so `assertDiscretionarySpendingAllowed` is exported for
+// the workflows that come after and is not consumed by W5-A or W5-B. Until then a purchase
+// with a negative balance is still refused, because `charge` of `lib/ledger.ts` is a
+// conditional update and a negative balance covers nothing; what the shared helper adds is
+// the code that names the state instead of the one that names the shortfall
+// (`docs/handoff/NOTES-w5c.md`, item 3.5).
 
 import { type FastifyInstance } from 'fastify';
-import { defineStubRoute } from '../../plugins/routes.js';
-import { routeKeysOfArea } from '../../shared/index.js';
+import { registerEconomySweepHooks } from './jobs.js';
+import { registerEconomyRoutes as registerRoutes } from './routes.js';
 
-/** Registra las rutas del area `economy`. Invocada una vez por `src/app.ts`. */
+/**
+ * Registers the routes of the area and the extension of the settlement sweep.
+ *
+ * The two are registered together because they are two halves of one policy: the sale is the
+ * way out of debt and the liquidation is what happens when it is not taken. Invoked once by
+ * `src/app.ts`.
+ */
 export function registerEconomyRoutes(app: FastifyInstance): void {
-  for (const key of routeKeysOfArea('economy')) {
-    defineStubRoute(app, key);
-  }
+  registerRoutes(app);
+  registerEconomySweepHooks();
 }
+
+export {
+  forcedLiquidationHook,
+  registerEconomySweepHooks,
+  resetEconomySweepHookRegistration,
+} from './jobs.js';
+
+export {
+  assertDiscretionarySpendingAllowed,
+  debtOf,
+  isInDebt,
+  liquidationTrigger,
+  type LiquidationTrigger,
+} from './debt.js';
+
+export {
+  loadLiquidatableHolding,
+  liquidationKey,
+  runForcedLiquidation,
+  type LiquidatedAsset,
+  type LiquidationOutcome,
+  type SkippedStep,
+} from './liquidation.js';
+
+export {
+  SALE_LEDGER_TYPE,
+  marketPrices,
+  pricePerDisplayUnit,
+  pricePerStoredUnit,
+  saleRevenue,
+  sellStock,
+  stockMarketValue,
+  type SellStockInput,
+  type SellStockOutcome,
+} from './market.js';
+
+export {
+  NO_LEDGER_FILTER,
+  parseLedgerCursor,
+  queryLedger,
+  sumLedger,
+  type LedgerPage,
+  type LedgerQueryInput,
+} from './ledger.js';
+
+export {
+  buildInventoryFarms,
+  buildInventoryReply,
+  toInventoryFarm,
+  toInventoryLine,
+} from './readModel.js';

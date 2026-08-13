@@ -718,9 +718,13 @@ export const API_ROUTES = {
     movesMoney: false,
     body: agriculturalTaskRequestSchema,
     reply: mutationReplySchema(createTaskResultSchema),
+    // `FARM_UPSERTED` because assigning a harvest commits silo capacity, and the occupancy the
+    // client draws is stored plus reserved: without the frame the indicator keeps offering room
+    // that is already committed (docs/handoff/NOTES-w6a.md 2.2).
     emits: [
       GameEventType.TASK_UPSERTED,
       GameEventType.FIELD_UPSERTED,
+      GameEventType.FARM_UPSERTED,
       GameEventType.MACHINE_UPSERTED,
       GameEventType.WORKER_UPSERTED,
     ],
@@ -736,10 +740,14 @@ export const API_ROUTES = {
     movesMoney: false,
     params: taskParamsSchema,
     reply: mutationReplySchema(cancelTaskResultSchema),
+    // `FARM_UPSERTED` gives the reserved capacity back, and `TREES_UPSERTED` returns the trees a
+    // cancelled felling had marked (GDD sections 106 and 132).
     emits: [
       GameEventType.TASK_UPSERTED,
       GameEventType.FIELD_UPSERTED,
       GameEventType.FOREST_PLOT_UPSERTED,
+      GameEventType.TREES_UPSERTED,
+      GameEventType.FARM_UPSERTED,
       GameEventType.MACHINE_UPSERTED,
       GameEventType.WORKER_UPSERTED,
     ],

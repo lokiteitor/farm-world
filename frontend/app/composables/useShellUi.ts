@@ -48,23 +48,71 @@ const sidePanel = ref<SidePanelTarget | null>(null);
 const sidePanelCollapsed = ref(false);
 const modals = ref<readonly OpenModal[]>([]);
 const noticeTrayOpen = ref(false);
+const textEntryFocused = ref(false);
 let modalCounter = 0;
+
+/**
+ * Whether the focused element takes typing.
+ *
+ * The three cases are the ones the panels of this interface actually contain: an input
+ * that is not a button-like control, a textarea, and anything marked editable. A select
+ * is deliberately not one of them: it consumes the keys it needs while it is open and
+ * arrow keys over a closed select are not text.
+ */
+function isTextEntry(element: Element | null): boolean {
+  if (element === null) {
+    return false;
+  }
+  if (element instanceof HTMLTextAreaElement) {
+    return true;
+  }
+  if (element instanceof HTMLElement && element.isContentEditable) {
+    return true;
+  }
+  if (!(element instanceof HTMLInputElement)) {
+    return false;
+  }
+  const type = element.type.toLowerCase();
+  return !['button', 'submit', 'reset', 'checkbox', 'radio', 'range', 'color', 'file'].includes(
+    type,
+  );
+}
 
 /**
  * Whether the world scene accepts input.
  *
- * One expression, one place. The world takes input when no modal is open; everything else
- * about the shell is irrelevant to it, and in particular the side panel does not disable
- * it, because the player has to be able to drag a selection while a panel shows its
- * price.
+ * One expression, one place. Two things take the input away from the canvas, and neither
+ * of them is the side panel: the player has to be able to drag a selection while a panel
+ * shows its price.
+ *
+ * The first is a modal, which is the case plan section 9.1 names. The second is the
+ * keyboard focus sitting in a text field, which is not a subtlety: the camera binds WASD
+ * on the document and the selection tool binds Enter and Escape, so naming a field
+ * "Parcela sur" while a side panel is open would pan the camera and confirm the
+ * selection (docs/handoff/NOTES-w4d.md 2.4 and NOTES-w4g.md 1.7). Only the keyboard is
+ * really at stake, but the predicate is one boolean by design, and losing the drag while
+ * the caret is in a field costs nothing: the player is typing, not dragging.
  */
-const worldInputEnabled = computed(() => modals.value.length === 0);
+const worldInputEnabled = computed(() => modals.value.length === 0 && !textEntryFocused.value);
 
 const topModal = computed<OpenModal | null>(() => modals.value.at(-1) ?? null);
 const modalOpen = computed(() => modals.value.length > 0);
 const sidePanelOpen = computed(() => sidePanel.value !== null && !sidePanelCollapsed.value);
 
 let arbiterInstalled = false;
+
+/**
+ * What the canvas answers when Escape is pressed: true when it consumed the key.
+ *
+ * Escape had two owners, which is one too many (docs/handoff/NOTES-w4g.md, section 1.6):
+ * the selection tool cancels the mode from its own keyboard binding, and the shell
+ * collapses the side panel, so one press did both. The tool cannot ask permission, because
+ * it is a Phaser scene and it may not import this module, so the arbitration is inverted:
+ * the shell asks the canvas whether this press is its, and stands down when it is. The
+ * page that mounts the tool registers the claim, and nothing else may.
+ */
+export type CanvasEscapeClaim = () => boolean;
+let canvasEscapeClaim: CanvasEscapeClaim | null = null;
 
 /**
  * Publishes the input verdict to Phaser whenever it changes, and only from here.
@@ -88,12 +136,27 @@ function installArbiter(): void {
       (enabled) => {
         gameBridge().emit('input:enabled', {
           enabled,
-          reason: enabled ? 'no modal open' : 'modal holds the input',
+          reason: enabled
+            ? 'no modal open and no text field focused'
+            : modals.value.length > 0
+              ? 'modal holds the input'
+              : 'a text field holds the keyboard',
         });
       },
       { immediate: true, flush: 'sync' },
     );
   });
+  // The focus is a document fact and not a component one, so it is observed once, here,
+  // where the predicate that consumes it lives. `focusin` and `focusout` and not `focus`
+  // and `blur`, because only the first pair bubbles to the document.
+  if (typeof document !== 'undefined') {
+    const update = (): void => {
+      textEntryFocused.value = isTextEntry(document.activeElement);
+    };
+    document.addEventListener('focusin', update, true);
+    document.addEventListener('focusout', update, true);
+    update();
+  }
 }
 
 export interface ShellUi {
@@ -120,6 +183,8 @@ export interface ShellUi {
   closeAllModals: () => void;
   /** The keydown handler of the shell. Registered once, by the layout. */
   handleKeydown: (event: KeyboardEvent) => void;
+  /** Registers what the canvas answers to Escape. Null gives the key back to the shell. */
+  setCanvasEscapeClaim: (claim: CanvasEscapeClaim | null) => void;
   reset: () => void;
 }
 
@@ -183,12 +248,23 @@ export function useShellUi(): ShellUi {
     modals.value = modals.value.filter((modal) => !modal.dismissible);
   }
 
+  function setCanvasEscapeClaim(claim: CanvasEscapeClaim | null): void {
+    canvasEscapeClaim = claim;
+  }
+
   /**
    * The keyboard of the shell.
    *
-   * Escape closes the topmost modal and, when there is none, collapses the side panel;
-   * that order is what makes Escape mean "go back one step" rather than "close everything",
-   * which is the behaviour that loses a half filled form.
+   * Escape means "go back one step" and not "close everything", which is the behaviour
+   * that loses a half filled form, so it walks one ladder and stops at the first rung
+   * that has something to give back: the topmost modal, then the canvas, then the notice
+   * tray, then the side panel.
+   *
+   * The canvas is second and it is the only rung this module does not act on itself. The
+   * selection tool cancels from its own binding, so what the shell has to do is stand
+   * down; leaving it out of the ladder is what made one press cancel the selection and
+   * collapse the panel at the same time. With a modal open the canvas has no input at all,
+   * which is why it is asked after the modal and not before.
    */
   function handleKeydown(event: KeyboardEvent): void {
     if (event.key !== 'Escape') {
@@ -197,6 +273,9 @@ export function useShellUi(): ShellUi {
     if (modalOpen.value) {
       event.preventDefault();
       closeTopModal();
+      return;
+    }
+    if (worldInputEnabled.value && canvasEscapeClaim?.() === true) {
       return;
     }
     if (noticeTrayOpen.value) {
@@ -216,6 +295,7 @@ export function useShellUi(): ShellUi {
     sidePanelCollapsed.value = false;
     modals.value = [];
     noticeTrayOpen.value = false;
+    canvasEscapeClaim = null;
   }
 
   return {
@@ -237,6 +317,7 @@ export function useShellUi(): ShellUi {
     closeTopModal,
     closeAllModals,
     handleKeydown,
+    setCanvasEscapeClaim,
     reset,
   };
 }

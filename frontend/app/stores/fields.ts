@@ -26,7 +26,7 @@ import {
   fromWireGameMs,
   projectCropPhase,
   projectFallowFertility,
-  projectWeedLevel,
+  projectWeedLevelAcrossPhases,
   type CellCoordWire,
   type CropPhaseProjection,
   type FieldDto,
@@ -134,11 +134,16 @@ export const useFieldsStore = defineStore('fields', () => {
     const phase = phaseAt(fieldId, atGameMs);
     const state = phase?.state ?? field.cropCycleState;
 
-    const weedLevelBp = projectWeedLevel({
+    // The interval is cut at the phase boundaries, with the shared rule the server settles
+    // with. Projecting the whole stretch with the state of the final instant would count the
+    // eighteen hours of `SEEDED` plus `GERMINATING` as weed growing hours, which GDD section
+    // 78 does not admit, and the panel would show a yield below the authoritative one.
+    const weedLevelBp = projectWeedLevelAcrossPhases({
       weedLevelBp: bp(field.weedLevelBp),
       updatedAtGameMs: fromWireGameMs(field.weedLevelUpdatedAtGameMs),
       toGameMs: atGameMs,
-      cropCycleState: state,
+      cropCycleState: field.cropCycleState,
+      seededAtGameMs: field.seededAtGameMs === null ? null : fromWireGameMs(field.seededAtGameMs),
       crop,
     });
     const fertilityBp = projectFallowFertility({

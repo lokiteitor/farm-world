@@ -27,11 +27,21 @@ import {
   createReconcileJobHandler,
   settleSweepHandler,
 } from './lib/jobs.js';
+import {
+  registerCancelledTaskRelease,
+  registerLiquidationTaskCanceller,
+} from './lib/moduleSeams.js';
 import { JobName } from './lib/queue.js';
+import { registerEconomySweepHooks } from './modules/economy/jobs.js';
 import { fieldAdvancePhaseHandler } from './modules/fields/jobs.js';
-import { forestNotifyMilestoneHandler } from './modules/forestry/jobs.js';
+import {
+  forestNotifyMilestoneHandler,
+  registerForestryScheduledHandlers,
+} from './modules/forestry/jobs.js';
+import { releaseForestryTask } from './modules/forestry/tasks.js';
 import { machineRepairCompleteHandler } from './modules/machinery/jobs.js';
 import { taskCompleteHandler } from './modules/tasks/jobs.js';
+import { cancelTasksForLiquidation } from './modules/tasks/service.js';
 import { workerPoolRefreshHandler } from './modules/workers/jobs.js';
 import { ScheduledEventKind } from './shared/index.js';
 
@@ -58,6 +68,42 @@ const HANDLER_BY_KIND: Readonly<Record<ScheduledEventKind, ScheduledEventHandler
 };
 
 /**
+ * The four extensions a module contributes to a registry it does not own.
+ *
+ * They used to be installed from the route registration of the module that owned them, which
+ * meant they were installed only in the process that builds the Fastify application: the
+ * queue process ran the sweep without the forced liquidation and completed a felling with the
+ * generic handler (docs/handoff/NOTES-w5c.md 2.1, NOTES-w6c.md 2.1). Installing them here
+ * fixes that by construction, because both entry points call this file.
+ *
+ * The two `register*` of the modules are idempotent, guarded by a module flag, so the module
+ * may still call them from its own registration without stacking a second copy. The two
+ * seams of `lib/moduleSeams.ts` are the cross-module dependencies the zone rules forbid, and
+ * this is the only file allowed to name both ends.
+ */
+let moduleExtensionsRegistered = false;
+
+function registerModuleExtensions(): void {
+  if (moduleExtensionsRegistered) {
+    return;
+  }
+  moduleExtensionsRegistered = true;
+
+  registerEconomySweepHooks();
+  registerForestryScheduledHandlers();
+
+  registerLiquidationTaskCanceller(async (context, atGameMs) => {
+    const cancelled = await cancelTasksForLiquidation(context, atGameMs);
+    return cancelled.map((outcome) => ({
+      taskId: outcome.task.id,
+      operation: outcome.task.operation,
+    }));
+  });
+
+  registerCancelledTaskRelease(releaseForestryTask);
+}
+
+/**
  * Fills both registries. Called by `server.ts` and by `worker.ts`, before either starts
  * serving, and idempotent: registering twice replaces an entry with itself.
  */
@@ -65,6 +111,8 @@ export function registerDomainHandlers(services: ServiceContext): void {
   for (const [kind, handler] of Object.entries(HANDLER_BY_KIND)) {
     SCHEDULED_EVENT_HANDLERS.register(kind as ScheduledEventKind, handler);
   }
+
+  registerModuleExtensions();
 
   const advance = createAdvanceJobHandler(services);
   services.jobs.register(JobName.TASK_COMPLETE, advance);

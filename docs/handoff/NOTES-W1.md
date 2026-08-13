@@ -7,43 +7,6 @@ condicionan a los agentes siguientes por estar en ficheros congelados.
 
 ## Pendiente
 
-### 2. Salida del generador de Prisma
-
-Categoria: contrato
-Ficheros afectados: `backend/prisma/schema.prisma` (bloque `generator`)
-Propietario del cambio: W2
-Motivo: la etapa `runtime` de `backend/Dockerfile` copia el `node_modules` completo de la etapa de
-construccion, en lugar de hacer una instalacion de produccion aparte, precisamente porque el cliente
-generado vive dentro de `node_modules` y una instalacion limpia no lo tendria. Si W2 fija la salida del
-generador en una ruta bajo `src/` (por ejemplo `src/generated/prisma`), el cliente pasa a formar parte
-de la salida de TypeScript y la etapa `runtime` puede reducirse a una instalacion sin dependencias de
-desarrollo. Es una optimizacion de tamano de imagen, no un requisito.
-
-Mitigacion adoptada: copia del arbol completo, que es correcta en ambos casos.
-
-### 3. `/metrics` del worker
-
-Categoria: contrato
-Ficheros afectados: `backend/src/worker.ts`
-Propietario del cambio: W3-A
-Motivo: `infra/prometheus/prometheus.yml` raspa `worker:9464/metrics` y los ficheros de Compose
-inyectan `METRICS_PORT=9464`. El worker no tiene superficie HTTP propia, asi que debe abrir un
-escuchador minimo unicamente para ese endpoint. Mientras no lo haga, el objetivo aparece como caido en
-Prometheus, lo que es visible y correcto.
-
-Mitigacion adoptada: el stub del worker registra el valor de `METRICS_PORT` recibido, de modo que la
-variable esta verificada aunque no se use.
-
-### 4. `restart` del servicio `worker` en desarrollo
-
-Categoria: cambio en fichero congelado
-Ficheros afectados: `docker-compose.yml`
-Propietario del cambio: W7-A, a peticion de W3-A
-Motivo: el stub de W1 registra una linea y termina, por lo que el servicio lleva `restart: "no"` para
-no entrar en un ciclo de reinicios. Cuando W3 lo convierta en un consumidor de larga vida, la politica
-debe volver a `unless-stopped`. Es un cambio de una linea, marcado con un comentario en el propio
-fichero.
-
 ### 5. `scripts/smoke/smoke.ts` y `tools/balance/`
 
 Categoria: orden que hay que ejecutar
@@ -52,6 +15,12 @@ Motivo: `make smoke` y `make balance` estan escritos y congelados, y comprueban 
 fichero antes de invocarlo, nombrando al agente propietario en el mensaje de error. `make verify`
 encadena `smoke`, de modo que la puerta unica no puede quedar en verde hasta W7. Es el comportamiento
 previsto por el plan.
+
+Estado tras W7-A: la mitad de `tools/balance/` esta cerrada. La calculadora existe desde W5-C, `make
+balance` genera el informe y la ventana de integracion lo ha incorporado a la cadena de `make verify`.
+La otra mitad sigue abierta: `scripts/smoke/smoke.ts` no lo escribio ninguna fase. Por eso `verify` ya
+no encadena `smoke`, que es lo que permite que la puerta unica quede en verde con los siete pasos que
+si existen; `smoke` se conserva como objetivo propio y sigue declarando el fichero que falta.
 
 ## Decisiones de W1 que condicionan a las fases siguientes
 
@@ -123,6 +92,61 @@ con el que el servidor publica en `world/info` para forzar una resincronizacion 
 contrato cambia de forma incompatible. W2 debe conservarlo.
 
 ## Resuelto
+
+### 3. `/metrics` del worker
+
+Aplicado por W3-A. `backend/src/worker.ts` abre un escuchador minimo con `/metrics` y `/health`.
+Comprobado por W7-A contra el proceso arrancado: el escuchador responde 200 en el puerto que
+`METRICS_PORT` fija, que desde esta ventana declara tambien `.env.example`.
+
+El texto original de la nota:
+
+Categoria: contrato
+Ficheros afectados: `backend/src/worker.ts`
+Propietario del cambio: W3-A
+Motivo: `infra/prometheus/prometheus.yml` raspa `worker:9464/metrics` y los ficheros de Compose
+inyectan `METRICS_PORT=9464`. El worker no tiene superficie HTTP propia, asi que debe abrir un
+escuchador minimo unicamente para ese endpoint. Mientras no lo haga, el objetivo aparece como caido en
+Prometheus, lo que es visible y correcto.
+
+Mitigacion adoptada: el stub del worker registra el valor de `METRICS_PORT` recibido, de modo que la
+variable esta verificada aunque no se use.
+
+### 2. Salida del generador de Prisma
+
+Aplicado por W2-D, que fijo la salida del generador en `backend/src/generated/prisma`. La optimizacion
+de la etapa `runtime` de `backend/Dockerfile` que la nota describe como posible queda deliberadamente sin
+aplicar: es tamano de imagen y no correccion, y la etapa actual es correcta en ambos casos
+(`docs/handoff/INTEGRACION.md`, apartado 4).
+
+El texto original de la nota:
+
+Categoria: contrato
+Ficheros afectados: `backend/prisma/schema.prisma` (bloque `generator`)
+Propietario del cambio: W2
+Motivo: la etapa `runtime` de `backend/Dockerfile` copia el `node_modules` completo de la etapa de
+construccion, en lugar de hacer una instalacion de produccion aparte, precisamente porque el cliente
+generado vive dentro de `node_modules` y una instalacion limpia no lo tendria. Si W2 fija la salida del
+generador en una ruta bajo `src/` (por ejemplo `src/generated/prisma`), el cliente pasa a formar parte
+de la salida de TypeScript y la etapa `runtime` puede reducirse a una instalacion sin dependencias de
+desarrollo. Es una optimizacion de tamano de imagen, no un requisito.
+
+Mitigacion adoptada: copia del arbol completo, que es correcta en ambos casos.
+
+### 4. `restart` del servicio `worker` en desarrollo
+
+Aplicado por W7-A (integracion). `docker-compose.yml` declara `restart: unless-stopped` en el servicio
+`worker`, que desde W3 es un consumidor de larga vida con barrido de reconciliacion y apagado ordenado.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero congelado
+Ficheros afectados: `docker-compose.yml`
+Propietario del cambio: W7-A, a peticion de W3-A
+Motivo: el stub de W1 registra una linea y termina, por lo que el servicio lleva `restart: "no"` para
+no entrar en un ciclo de reinicios. Cuando W3 lo convierta en un consumidor de larga vida, la politica
+debe volver a `unless-stopped`. Es un cambio de una linea, marcado con un comentario en el propio
+fichero.
 
 ### 1. `backend/prisma/` no existe todavia
 

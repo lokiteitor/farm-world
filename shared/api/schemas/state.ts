@@ -281,6 +281,16 @@ export const welcomeBackLiquidationSchema = z.strictObject({
   step: z.string().min(1).max(32),
   subjectType: z.string().max(64).nullable(),
   subjectId: z.string().max(64).nullable(),
+  /**
+   * The machine type, the resource or the name of the worker, which the liquidation engine
+   * already writes into `meta.assets[].detail` of the aggregate entry.
+   *
+   * ADR-0039 rules out the single aggregate entry precisely because it "loses what was sold",
+   * and without this field the summary lost it again at the last step: an asset sold during the
+   * absence and already gone from the client read as "Machine <identifier>" and not as
+   * "Cosechadora" (docs/handoff/NOTES-w6t.md 1.1).
+   */
+  detail: z.string().max(64).nullable(),
   amount: moneySchema,
 });
 export type WelcomeBackLiquidation = z.infer<typeof welcomeBackLiquidationSchema>;

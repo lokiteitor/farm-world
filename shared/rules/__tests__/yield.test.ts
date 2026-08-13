@@ -11,6 +11,7 @@ import {
   projectCropPhase,
   projectFallowFertility,
   projectWeedLevel,
+  projectWeedLevelAcrossPhases,
   weedToYieldPenalty,
 } from '../yield.js';
 
@@ -201,6 +202,67 @@ describe('projectWeedLevel (GDD section 78)', () => {
         crop: WHEAT,
       }),
     ).toBe(500);
+  });
+});
+
+describe('projectWeedLevelAcrossPhases (GDD section 78 sobre la linea de GDD 76)', () => {
+  // Campo sembrado en t0 cuyo trabajo materializador no ha corrido: la fila sigue en
+  // `SEEDED` y la proyeccion ya va por delante. Es el caso que separa las tres lecturas.
+  const sown = (toHours: number): number =>
+    projectWeedLevelAcrossPhases({
+      weedLevelBp: BP_ZERO,
+      updatedAtGameMs: at(0),
+      toGameMs: at(toHours),
+      cropCycleState: CropCycleState.SEEDED,
+      seededAtGameMs: at(0),
+      crop: WHEAT,
+    });
+
+  it('no acumula nada en las 18 h de SEEDED y GERMINATING', () => {
+    expect(sown(6)).toBe(0);
+    expect(sown(18)).toBe(0);
+  });
+
+  it('acumula solo las horas de GROWING y de READY_TO_HARVEST', () => {
+    // 30 h: 18 sin crecimiento y 12 en `GROWING`, a 60 bp/h.
+    expect(sown(30)).toBe(720);
+    // 96 h: la frontera de `READY_TO_HARVEST`, 78 h de `GROWING`.
+    expect(sown(96)).toBe(4_680);
+    // 120 h: 78 de `GROWING` mas 24 ya listo para cosechar.
+    expect(sown(120)).toBe(6_120);
+  });
+
+  it('es aditiva por tramos, de modo que liquidar a mitad no cambia el resultado', () => {
+    const half = projectWeedLevelAcrossPhases({
+      weedLevelBp: BP_ZERO,
+      updatedAtGameMs: at(0),
+      toGameMs: at(40),
+      cropCycleState: CropCycleState.SEEDED,
+      seededAtGameMs: at(0),
+      crop: WHEAT,
+    });
+    const rest = projectWeedLevelAcrossPhases({
+      weedLevelBp: bp(half),
+      updatedAtGameMs: at(40),
+      toGameMs: at(120),
+      cropCycleState: CropCycleState.GROWING,
+      seededAtGameMs: at(0),
+      crop: WHEAT,
+    });
+    expect(rest).toBe(sown(120));
+  });
+
+  it('trata un campo fuera de la linea sembrada como un solo tramo', () => {
+    expect(
+      projectWeedLevelAcrossPhases({
+        weedLevelBp: BP_ZERO,
+        updatedAtGameMs: at(0),
+        toGameMs: at(100),
+        cropCycleState: CropCycleState.VIRGIN,
+        seededAtGameMs: null,
+        crop: WHEAT,
+      }),
+    ).toBe(6_000);
   });
 });
 

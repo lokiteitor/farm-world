@@ -129,6 +129,32 @@ export const useMachinesStore = defineStore('machines', () => {
     });
   }
 
+  /**
+   * Condition of one machine, from the reply of a cancellation.
+   *
+   * `cancelTaskResultSchema` reports the condition each machine ended with, prorated over
+   * the hours actually worked (GDD section 106), and it is the only authoritative figure
+   * the reply carries about the machine: the whole row travels in the `MACHINE_UPSERTED`
+   * frame that the same route emits. Patching the one field is the same shape as
+   * `balanceAfter` on the player, and it converges with the frame in either order because
+   * the frame is a full replacement.
+   *
+   * `assignable` is recomputed rather than left as it was, because it is a derivation of
+   * the condition (`shared/api/schemas/machinery.ts`) and a stale `true` next to a
+   * condition below the floor is what a panel would enable a button on.
+   */
+  function applyCondition(machineId: string, conditionBp: number): void {
+    const machine = collection.get(machineId);
+    if (machine === undefined) {
+      return;
+    }
+    collection.upsert({
+      ...machine,
+      conditionBp,
+      assignable: conditionBp >= MIN_CONDITION_TO_ASSIGN,
+    });
+  }
+
   /** Whether a machine is above the assignment floor (plan section 2.2). */
   function assignable(machineId: string): boolean {
     const machine = collection.get(machineId);
@@ -156,6 +182,7 @@ export const useMachinesStore = defineStore('machines', () => {
     candidatesFor,
     conditionMultiplier,
     estimateFor,
+    applyCondition,
     assignable,
   };
 });

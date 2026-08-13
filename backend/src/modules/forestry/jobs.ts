@@ -1,52 +1,155 @@
-// Manejadores de la cola que posee el modulo `forestry`.
+// The scheduled events of the forestry module.
 //
-// Andamiaje creado por W3-A con la firma definitiva. Propietario del contenido: W6-C.
+// Owner: workflow W6-C. Module `forestry`. Replaces the scaffolding workflow W3-A left with the
+// definitive signature, so neither `src/handlers.ts`, nor the queue, nor the point of advance is
+// reopened (plan section 11, rule 3).
 //
-// El registro de manejadores de `lib/advancePlayer.ts` esta predeclarado con los seis tipos de
-// `ScheduledEventKind`, y `src/handlers.ts` conecta cada uno con el fichero del modulo que lo
-// posee. Sustituir el cuerpo de esta funcion es por tanto todo lo que hace falta: ni el
-// registro, ni la cola, ni el punto de avance se vuelven a tocar (plan seccion 11, regla 3).
+// TWO HANDLERS AND ONE REGISTRATION, and the reason there are two is a boundary and not a
+// design preference:
 //
-// Contrato del manejador, que no cambia al implementarlo:
+//   - `FOREST_NOTIFY_MILESTONE` is the kind `src/handlers.ts` already wires to this module. It
+//     is per plot and never per tree, which is what makes notifying viable at all: GDD section
+//     130 admits one tree per cell and a plot may hold two thousand, so an event per tree would
+//     be tens of thousands of rows for a fact nothing depends on. The authority is the pure rule
+//     of `shared/rules/forestry.ts`; this job only materialises and reports what that rule
+//     already says (plan section 6.5, invariant 5).
+//   - `TASK_COMPLETE` is wired to `modules/tasks` of workflow W6-A, which cannot import this
+//     module and which this module cannot import (plan section 11, rule 4). The three forestry
+//     operations nevertheless complete through that kind, because it is the kind the contract
+//     and the queue declare for the completion of a task. The composition below is how the two
+//     coexist: the forestry effect is tried first and, when the task is not one of ours, the
+//     handler that was registered before is called unchanged.
 //
-//   - Corre dentro de la transaccion del avance y despues de que el evento haya sido reclamado
-//     con una actualizacion condicional, de modo que NO debe volver a comprobar el estado: si
-//     esta funcion se ejecuta, este proceso gano la carrera y es el unico que la ejecuta.
-//   - Todo efecto debe estar en esta transaccion. Encolar o publicar se hace registrando en
-//     `context.outbox`, que se vacia despues del commit.
-//   - Los sobres para el cliente se declaran con `context.emit(...)` y se escriben con el
-//     instante de vencimiento del evento, no con el de proceso: un trabajo que corrio tarde
-//     coloca el cambio donde ocurrio.
-//   - Nada de `Date.now()`: el instante es `context.reading` y el vencimiento
-//     `context.event.dueGameMs`.
+// The composition is installed from `registerForestryRoutes`, which is the call site this module
+// owns, exactly as `registerEconomyRoutes` installs `registerEconomySweepHooks` for the forced
+// liquidation of ADR-0039. It is idempotent and it never replaces itself with a second wrapper.
+//
+// KNOWN GAP, with the same shape as the one ADR-0039 records for the settlement sweep: the
+// worker process calls `registerDomainHandlers` and does not build the Fastify application, so
+// the composition is not installed there. Until the one line recorded in
+// `docs/handoff/NOTES-w6c.md` is applied to `src/worker.ts`, a forestry task whose completion is
+// processed exclusively by the queue process falls through to the handler of `modules/tasks`.
+// Correctness is not lost — the first request of the player applies it, which is the whole point
+// of `advancePlayer` being the single point of advance — but punctuality is.
 
-import { type ScheduledEventHandler } from '../../lib/advancePlayer.js';
+import { SCHEDULED_EVENT_HANDLERS, type ScheduledEventHandler } from '../../lib/advancePlayer.js';
 import {
+  NoticeKind,
   ScheduledEventKind,
+  toWireGameMs,
   type ScheduledEventKind as ScheduledEventKindType,
 } from '../../shared/index.js';
+import { treesUpsertedFrame } from './readModel.js';
+import { FOREST_PLOT_REF_TYPE, findLivePlot } from './record.js';
+import { syncMilestoneSchedule, treesCrossingMilestone } from './service.js';
+import { completeForestryTask, liveTreesOfArea } from './tasks.js';
 
 /** El tipo de evento agendado que posee este modulo. */
 export const OWNED_EVENT_KIND: ScheduledEventKindType = ScheduledEventKind.FOREST_NOTIFY_MILESTONE;
 
 /**
- * Manejador de `FOREST_NOTIFY_MILESTONE`: materializa y notifica el cambio de fase de los arboles de una parcela (GDD §131).
+ * Handler of `FOREST_NOTIFY_MILESTONE`: reports the trees of a plot that reached a stage worth
+ * reporting (GDD section 131).
  *
- * Andamiaje: no aplica ningun efecto y lo hace constar. El evento ya quedo marcado como
- * procesado por el punto de avance, asi que un andamiaje que fallara convertiria cada
- * vencimiento en un reintento indefinido de BullMQ; uno que registra el hueco deja la misma
- * traza que un tipo sin manejador y no bloquea la simulacion de los demas.
+ * Nothing is written to a tree here, and nothing has to be: the stage is derived from the
+ * planting instant and the clock, so by the time this runs the trees have already matured
+ * whether or not the job ran. What the job adds is the notification and the line of the return
+ * summary of GDD section 68, plus the next alarm clock.
+ *
+ * A missing reference and a plot that no longer exists are both answered by doing nothing. An
+ * event outliving its subject is expected at least once, and failing here would turn the due
+ * instant into an endless BullMQ retry, because the point of advance has already marked the
+ * event as processed.
  */
 export const forestNotifyMilestoneHandler: ScheduledEventHandler = async (context) => {
-  context.services.metrics.scheduledEventsUnhandled.inc({ kind: context.event.kind });
-  context.services.logger.warn(
-    {
-      kind: context.event.kind,
-      scheduledEventId: context.event.id,
-      playerId: context.lock.playerId,
-      owner: 'W6-C',
+  const { event, lock, reading, tx } = context;
+  if (event.refType !== FOREST_PLOT_REF_TYPE || event.refId === null) {
+    context.services.logger.warn(
+      { kind: event.kind, scheduledEventId: event.id, playerId: lock.playerId },
+      'forest milestone event without a plot reference',
+    );
+    return;
+  }
+
+  const plot = await findLivePlot(tx, lock.playerId, event.refId);
+  if (plot === null) {
+    context.services.logger.debug(
+      { kind: event.kind, scheduledEventId: event.id, forestPlotId: event.refId },
+      'forest milestone event of a plot that is no longer live',
+    );
+    return;
+  }
+
+  const standing = await liveTreesOfArea(tx, plot.id, null);
+  const crossing = treesCrossingMilestone(standing, event.dueGameMs);
+  // The next alarm clock is set on the way out, whether or not anything crossed: a window that
+  // reported nothing is a window whose trees were felled, and the plot still has a future.
+  await syncMilestoneSchedule(tx, context.outbox, reading, plot, event.dueGameMs, standing);
+  if (crossing.length === 0) {
+    return;
+  }
+
+  context.emit(treesUpsertedFrame(plot, standing, crossing, event.dueGameMs), {
+    type: 'NOTICE',
+    payload: {
+      notice: {
+        kind: NoticeKind.FOREST_MILESTONE,
+        severity: 'INFO',
+        code: null,
+        message: `${crossing.length} arbol(es) de la parcela ${plot.name} alcanzaron la madurez.`,
+        details: { forestPlotId: plot.id, treeCount: crossing.length },
+        atGameMs: toWireGameMs(event.dueGameMs),
+        subjectType: FOREST_PLOT_REF_TYPE,
+        subjectId: plot.id,
+      },
     },
-    'andamiaje de manejador: el evento vencio y su modulo todavia no esta implementado',
-  );
-  await Promise.resolve();
+  });
 };
+
+// ---------------------------------------------------------------------------
+// The completion of a forestry task
+// ---------------------------------------------------------------------------
+
+/** The composed handler this module installed, so a second registration is a no-op. */
+let installedTaskCompleteHandler: ScheduledEventHandler | null = null;
+
+/**
+ * The handler of `TASK_COMPLETE` this module contributes: the three forestry operations, and a
+ * delegation to whatever was registered before for everything else.
+ */
+export function composeTaskCompleteHandler(
+  delegate: ScheduledEventHandler | undefined,
+): ScheduledEventHandler {
+  return async (context) => {
+    if (await completeForestryTask(context)) {
+      return;
+    }
+    if (delegate !== undefined) {
+      await delegate(context);
+    }
+  };
+}
+
+/**
+ * Installs the forestry contribution to `TASK_COMPLETE`.
+ *
+ * Idempotent: registering twice leaves exactly one wrapper, because the handler currently
+ * registered is compared against the one this module installed. The order matters and is
+ * satisfied by construction: `registerDomainHandlers` runs before `buildApp` in `server.ts` and
+ * in the integration harness, so the delegate captured here is the real handler of
+ * `modules/tasks` and never the scaffolding.
+ */
+export function registerForestryScheduledHandlers(): void {
+  const current = SCHEDULED_EVENT_HANDLERS.handlerFor(ScheduledEventKind.TASK_COMPLETE);
+  if (installedTaskCompleteHandler !== null && current === installedTaskCompleteHandler) {
+    return;
+  }
+  const composed = composeTaskCompleteHandler(current);
+  installedTaskCompleteHandler = composed;
+  SCHEDULED_EVENT_HANDLERS.register(ScheduledEventKind.TASK_COMPLETE, composed);
+}
+
+/** Forgets the installation. For the tests, which must not inherit the registration of another. */
+export function resetForestryScheduledHandlerRegistration(): void {
+  installedTaskCompleteHandler = null;
+}

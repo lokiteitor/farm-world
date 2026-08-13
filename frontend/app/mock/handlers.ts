@@ -90,6 +90,7 @@ import {
   type ApiErrorDetails,
   type ApiRouteKey,
   type CellCoordWire,
+  type FarmDto,
   type FieldDto,
   type LedgerEntryDto,
   type LedgerType,
@@ -127,6 +128,29 @@ function ok(body: unknown): MockReply {
 
 function text(body: string, contentType: string): MockReply {
   return { status: 200, body, contentType };
+}
+
+/**
+ * The refusal of `expectedTotal`, or null when the budget the client sent still holds.
+ *
+ * The real server compares its own total against the one the request declares and answers 400
+ * naming the field, with the two figures in the details (`modules/machinery/service.ts`,
+ * `modules/land/service.ts`, `modules/farms/index.ts`). A declared field nobody checks is worse
+ * than an undeclared one, and the simulated server could not exercise the refusal at all
+ * (docs/handoff/NOTES-w5f.md 3.6).
+ */
+function expectedTotalMismatch(expected: string | undefined, actual: Money): MockReply | null {
+  if (expected === undefined) {
+    return null;
+  }
+  if (Money.compare(fromWireMoney(expected), actual) === 0) {
+    return null;
+  }
+  return fail(ValidationCode.VALIDATION_FAILED, {
+    field: 'body.expectedTotal',
+    expected: toWireMoney(actual),
+    actual: expected,
+  });
 }
 
 function fail(code: ApiErrorCode, details?: ApiErrorDetails): MockReply {
@@ -214,6 +238,29 @@ function patchChunks(server: MockServer, cells: readonly CellCoordWire[]): void 
   }
 }
 
+/**
+ * The cells of a request with the repeats removed, in the order they arrived.
+ *
+ * The union of rectangles the selection tool composes can name a cell twice, and the real
+ * server never charges for it twice: it claims by unique key and reports what it actually
+ * acquired. Valuing the duplicate would make the simulated total larger than the real one,
+ * which is the difference that a panel comparing its own estimate with the reply would
+ * report as an error of the panel (docs/handoff/NOTES-w4a.md 1.3, NOTES-w4-cierre.md 6).
+ */
+function distinctCells(cells: readonly CellCoordWire[]): readonly CellCoordWire[] {
+  const seen = new Set<number>();
+  const unique: CellCoordWire[] = [];
+  for (const cell of cells) {
+    const key = cellKey(cell.cellX, cell.cellY);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    unique.push(cell);
+  }
+  return unique;
+}
+
 /** The cell as the shared selection rules want it, from the point of view of the player. */
 function selectionCellOf(world: MockWorld, cell: CellCoordWire): SelectionCell {
   const owned = world.cells.get(cellKey(cell.cellX, cell.cellY));
@@ -227,6 +274,38 @@ function selectionCellOf(world: MockWorld, cell: CellCoordWire): SelectionCell {
   };
 }
 
+/** Storage capacity of the farm for one resource, added up from its buildings. */
+function storageCapacityOf(world: MockWorld, resource: StorageResource): number {
+  let total = 0;
+  for (const building of world.buildings) {
+    const definition = BUILDING_CATALOGUE[building.type];
+    if (definition.capacityKind === 'STORAGE' && definition.capacityResource === resource) {
+      total += definition.capacity ?? 0;
+    }
+  }
+  return total;
+}
+
+/** The same usage the sample world is built with: stock, reservation and occupancy. */
+function usageWithCapacity(
+  current: { readonly storedUnits: number; readonly reservedUnits: number },
+  capacityUnits: number,
+): { storedUnits: number; reservedUnits: number; capacityUnits: number; occupancyBp: number } {
+  const occupancy =
+    capacityUnits <= 0
+      ? 0
+      : Math.min(
+          10_000,
+          Math.round(((current.storedUnits + current.reservedUnits) / capacityUnits) * 10_000),
+        );
+  return {
+    storedUnits: current.storedUnits,
+    reservedUnits: current.reservedUnits,
+    capacityUnits,
+    occupancyBp: occupancy,
+  };
+}
+
 function recomputeFarm(world: MockWorld): void {
   const garage = world.buildings.find((building) => building.type === BuildingType.GARAGE);
   const home = world.buildings.find((building) => building.type === BuildingType.WORKER_HOME);
@@ -236,6 +315,15 @@ function recomputeFarm(world: MockWorld): void {
     workerSlots: { used: world.workers.length, total: home?.capacity ?? 0 },
     buildingCount: world.buildings.length,
     hasWorkshop: world.buildings.some((building) => building.type === BuildingType.WORKSHOP),
+    // Capacity comes from the buildings and stock does not, which is the asymmetry of plan
+    // section 5.4: what is counted is checked per building, what is fungible is held by
+    // the farm. Without this, building a second silo left the capacity where it was and
+    // the occupancy of the panel disagreed with the catalogue.
+    wheat: usageWithCapacity(
+      world.farm.wheat,
+      storageCapacityOf(world, StorageResource.WHEAT_LITERS),
+    ),
+    wood: usageWithCapacity(world.farm.wood, storageCapacityOf(world, StorageResource.WOOD_M3)),
   };
   if (garage !== undefined) {
     garage.occupancy = world.machines.length;
@@ -295,6 +383,45 @@ function fieldProjectionOf(world: MockWorld, field: FieldDto): FieldDto {
       expectedYieldLiters: expected.liters,
       availableOperations: field.currentTaskId === null ? operations : [],
     },
+  };
+}
+
+/**
+ * Farms founded during the session, beyond the one the sample world is built with.
+ *
+ * Keyed by the world so that a fresh `createMockWorld` starts with one holding again, and
+ * held here rather than in `mock/world.ts` because `MockWorld` declares a single `farm`
+ * and that module belongs to another agent. The consequence is the one that matters for
+ * the panels: `GET /api/farms` and the snapshot list every holding, so the multi farm
+ * exploitation of GDD section 31 can be exercised against the simulated server exactly as
+ * it can against the real one (docs/handoff/NOTES-w4f.md, section 4.1).
+ */
+const foundedFarms = new WeakMap<MockWorld, FarmDto[]>();
+
+/** Every holding of the player: the one of the sample world and the founded ones. */
+function farmsOf(world: MockWorld): readonly FarmDto[] {
+  return [world.farm, ...(foundedFarms.get(world) ?? [])];
+}
+
+/**
+ * A farm with nothing in it, which is what founding one produces.
+ *
+ * Founding is an accounting act and not a physical one (ADR-0029): no price, no footprint
+ * and no capacity, because what occupies cells and costs money is each building. Every
+ * counter therefore starts at zero, and it is the buildings that raise them.
+ */
+function emptyFarm(world: MockWorld, id: string, name: string): FarmDto {
+  const empty = { storedUnits: 0, reservedUnits: 0, capacityUnits: 0, occupancyBp: 0 };
+  return {
+    id,
+    name,
+    wheat: empty,
+    wood: empty,
+    machineSlots: { used: 0, total: 0 },
+    workerSlots: { used: 0, total: 0 },
+    hasWorkshop: false,
+    buildingCount: 0,
+    createdAtGameMs: toWireGameMs(world.nowGameMs),
   };
 }
 
@@ -403,7 +530,7 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
       atGameMs: toWireGameMs(world.nowGameMs),
       world: worldInfo(server),
       player: world.player,
-      farms: [world.farm],
+      farms: farmsOf(world),
       buildings: world.buildings,
       fields: world.fields,
       fieldCells: [...world.fieldCells].map(([fieldId, cells]) => ({ fieldId, cells })),
@@ -423,7 +550,13 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
       })),
       inventory: world.inventory,
       notices: world.notices,
-      welcomeBackPending: false,
+      // Derived, as the real server derives it: the mark of the last summary is behind the
+      // present instant, so there is a window to summarise. It was a literal `false`, which
+      // made the return summary the one panel that could not be reached against this server
+      // (docs/handoff/NOTES-w6w.md 4.4). Flipping the literal to `true` would have been worse:
+      // the modal would open in every development session, including right after a dismissal,
+      // and `POST /api/session/welcome-back/ack` moves the mark precisely so it does not.
+      welcomeBackPending: fromWireGameMs(world.player.lastSummaryGameMs) < world.nowGameMs,
     });
   },
   'GET /api/events': (server, request) => {
@@ -557,7 +690,8 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     }
     const world = server.world;
     const input = body<{ cells: CellCoordWire[] }>(request);
-    const cells = input.cells.map((cell) => {
+    const requested = distinctCells(input.cells);
+    const cells = requested.map((cell) => {
       const resolved = selectionCellOf(world, cell);
       const blockedBy = canPurchase(resolved);
       const price = blockedBy === null ? cellPrice(resolved.terrain) : null;
@@ -571,7 +705,7 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     });
     const purchasable = cells.filter((cell) => cell.blockedBy === null);
     const total = landPurchasePrice(
-      input.cells
+      requested
         .map((cell) => selectionCellOf(world, cell))
         .filter((cell) => canPurchase(cell) === null)
         .map((cell) => cell.terrain),
@@ -597,13 +731,16 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     }
     const world = server.world;
     const input = body<{ cells: CellCoordWire[]; allowPartial: boolean }>(request);
-    if (input.cells.length > MAX_SELECTION_CELLS) {
+    // Deduplicated first and measured after, which is the order of `normaliseSelection` in
+    // `backend/src/modules/land/service.ts`: the ceiling is a ceiling on distinct cells.
+    const requested = distinctCells(input.cells);
+    if (requested.length > MAX_SELECTION_CELLS) {
       return fail(ValidationCode.SELECTION_TOO_LARGE, {
-        cellCount: input.cells.length,
+        cellCount: requested.length,
         limit: MAX_SELECTION_CELLS,
       });
     }
-    const resolved = input.cells.map((cell) => selectionCellOf(world, cell));
+    const resolved = requested.map((cell) => selectionCellOf(world, cell));
     const purchasable = resolved.filter((cell) => canPurchase(cell) === null);
     if (purchasable.length < resolved.length && !input.allowPartial) {
       // The whole request is refused with the reason of the first cell that blocked it, which
@@ -649,19 +786,24 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
   // --- farms --------------------------------------------------------------
   'GET /api/farms': (server) => {
     const guard = requireSession(server);
-    return guard ?? ok({ farms: [server.world.farm], buildings: server.world.buildings });
+    return guard ?? ok({ farms: farmsOf(server.world), buildings: server.world.buildings });
   },
   'POST /api/farms': (server, request) => {
     const guard = requireSession(server);
     if (guard !== null) {
       return guard;
     }
-    // One farm in the sample world. Creating a second one renames the first rather than
-    // inventing a second holding, which no panel of this phase reads.
+    // A second holding, as the real route creates one: a row with a name and nothing else.
+    // It used to rename the only farm of the sample world, which made the founding flow
+    // untestable against the simulated server and was the opposite of what the panel says
+    // is happening (docs/handoff/NOTES-w4f.md, section 4.1).
+    const world = server.world;
     const input = body<{ name: string }>(request);
-    server.world.farm = { ...server.world.farm, name: input.name };
-    server.emit('FARM_UPSERTED', { farm: server.world.farm });
-    return mutation(server, { farm: server.world.farm });
+    const founded = foundedFarms.get(world) ?? [];
+    const farm = emptyFarm(world, `farm-${founded.length + 2}`, input.name);
+    foundedFarms.set(world, [...founded, farm]);
+    server.emit('FARM_UPSERTED', { farm });
+    return mutation(server, { farm });
   },
   'POST /api/farms/:farmId/buildings': (server, request) => {
     const guard = requireSession(server);
@@ -723,7 +865,9 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     }
     world.buildings = [...world.buildings, created];
     recomputeFarm(world);
+    refreshInventory(world);
     server.emit('BUILDING_UPSERTED', { building: created });
+    server.emit('INVENTORY_UPSERTED', { farms: world.inventory });
     server.emit('FARM_UPSERTED', { farm: world.farm });
     patchChunks(server, footprint);
     post(server, Money.negate(totalPrice), 'BUILDING_PURCHASE', {
@@ -759,6 +903,22 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
         entityId: buildingId,
       });
     }
+    // Storage: removing the capacity must not leave the farm holding more than it can. The
+    // second refusal of the real route, in its order and with its code, and the reason the
+    // silo of the sample world cannot be sold with 18 400 L inside
+    // (`backend/src/modules/farms/index.ts`, and docs/handoff/NOTES-w4f.md, section 4.2).
+    const definition = BUILDING_CATALOGUE[building.type];
+    if (definition.capacityKind === 'STORAGE' && definition.capacityResource !== null) {
+      const usage = inventoryLineUsage(world, definition.capacityResource);
+      const remaining = usage.capacityUnits - (definition.capacity ?? 0);
+      if (usage.storedUnits + usage.reservedUnits > remaining) {
+        return fail(ValidationCode.BUILDING_NOT_EMPTY, {
+          occupancy: usage.storedUnits + usage.reservedUnits,
+          capacity: remaining < 0 ? 0 : remaining,
+          entityId: buildingId,
+        });
+      }
+    }
     const released: CellCoordWire[] = [];
     for (const [key, cell] of [...world.cells]) {
       if (cell.buildingId === buildingId) {
@@ -768,12 +928,14 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     }
     world.buildings = world.buildings.filter((candidate) => candidate.id !== buildingId);
     recomputeFarm(world);
+    refreshInventory(world);
     const refund = fromWireMoney(building.resaleValue);
     server.emit('BUILDING_REMOVED', {
       buildingId,
       farmId: MOCK_FARM_ID,
       releasedCells: released,
     });
+    server.emit('INVENTORY_UPSERTED', { farms: world.inventory });
     server.emit('FARM_UPSERTED', { farm: world.farm });
     patchChunks(server, released);
     post(server, refund, 'BUILDING_SALE', { refType: 'BUILDING', refId: buildingId });
@@ -1041,7 +1203,12 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
       return guard;
     }
     const world = server.world;
-    const input = body<{ farmId: string; type: MachineType; garageId?: string }>(request);
+    const input = body<{
+      farmId: string;
+      type: MachineType;
+      garageId?: string;
+      expectedTotal?: string;
+    }>(request);
     const garage = world.buildings.find(
       (building) =>
         building.type === BuildingType.GARAGE &&
@@ -1058,6 +1225,13 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
       });
     }
     const definition = MACHINE_CATALOGUE[input.type];
+    // The price contract of ADR-0034, which the real server applies and this one ignored: a
+    // budget the panel computed before the catalogue moved must be refused and not charged in
+    // silence (docs/handoff/NOTES-w5f.md 3.6).
+    const priceMismatch = expectedTotalMismatch(input.expectedTotal, definition.purchasePrice);
+    if (priceMismatch !== null) {
+      return priceMismatch;
+    }
     if (Money.compare(definition.purchasePrice, world.balance) > 0) {
       return fail(ValidationCode.INSUFFICIENT_FUNDS, {
         requiredMoney: toWireMoney(definition.purchasePrice),
@@ -1124,7 +1298,7 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     }
     const world = server.world;
     const machineId = request.params.machineId ?? '';
-    const input = body<{ toConditionBp?: number }>(request);
+    const input = body<{ toConditionBp?: number; expectedTotal?: string }>(request);
     const machine = world.machines.find((candidate) => candidate.id === machineId);
     if (machine === undefined) {
       return fail(ValidationCode.NOT_FOUND, { entityKind: 'MACHINE', entityId: machineId });
@@ -1141,6 +1315,10 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     const points = Math.ceil((target - machine.conditionBp) / 100);
     const definition = MACHINE_CATALOGUE[machine.type];
     const cost = multiplyByCount(definition.repairCostPerConditionPoint, points);
+    const costMismatch = expectedTotalMismatch(input.expectedTotal, cost);
+    if (costMismatch !== null) {
+      return costMismatch;
+    }
     if (Money.compare(cost, world.balance) > 0) {
       return fail(ValidationCode.INSUFFICIENT_FUNDS, {
         requiredMoney: toWireMoney(cost),

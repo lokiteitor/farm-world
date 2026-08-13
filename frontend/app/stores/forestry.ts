@@ -14,6 +14,14 @@
 // values because they are what the panel shows, and this store keeps deriving them
 // locally between replies with the same shared rules, which is what lets a tree mature on
 // screen with no traffic at all.
+//
+// The geometry of a plot is kept here for the same reason the geometry of a field is kept
+// in the fields store, and it arrives by the same two channels: `ForestPlotDto` carries a
+// cell count and never the cells, so the geometry travels in the `FOREST_PLOT_UPSERTED`
+// frame, which sends it only when it changed, and in the snapshot (docs/handoff/
+// NOTES-w6c.md, section 3.4). Without it the outline of a plot and the route a felling
+// drives over could only be guessed from where its standing trees are, which is exactly
+// what a felling removes.
 
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
@@ -25,6 +33,7 @@ import {
   nextStageBoundaryGameMs,
   treeStageAt,
   type BatchWoodVolume,
+  type CellCoordWire,
   type ForestPlotDto,
   type GameMs,
   type TreeDto,
@@ -45,6 +54,8 @@ export const useForestryStore = defineStore('forestry', () => {
   const collection = createCollection<ForestPlotDto>();
   /** Trees of each plot, paginated on the wire and merged here by identifier. */
   const treesByPlotId = ref<Record<string, Record<string, TreeDto>>>({});
+  /** Cells of each plot. Travels in the frame when it changed, and in the snapshot. */
+  const cellsByPlotId = ref<Record<string, readonly CellCoordWire[]>>({});
 
   const totalCellCount = computed(() =>
     collection.all.value.reduce((total, plot) => total + plot.cellCount, 0),
@@ -56,6 +67,18 @@ export const useForestryStore = defineStore('forestry', () => {
 
   function ofFarm(farmId: string): readonly ForestPlotDto[] {
     return collection.all.value.filter((plot) => plot.farmId === farmId);
+  }
+
+  /**
+   * Cells of a plot, empty while the geometry has not arrived.
+   *
+   * Empty is a legitimate answer and not an error: the geometry travels only when it
+   * changes, so a client that learned about a plot from a mutation reply has the plot and
+   * not its cells until the frame or the next snapshot arrives. Every caller degrades to
+   * the trees of the plot, which is what a felling works on anyway (GDD section 132).
+   */
+  function cellsOf(forestPlotId: string): readonly CellCoordWire[] {
+    return cellsByPlotId.value[forestPlotId] ?? [];
   }
 
   function treesOf(forestPlotId: string): readonly TreeDto[] {
@@ -120,14 +143,33 @@ export const useForestryStore = defineStore('forestry', () => {
     treesByPlotId.value[forestPlotId] = next;
   }
 
+  function applyCells(forestPlotId: string, cells: readonly CellCoordWire[]): void {
+    cellsByPlotId.value[forestPlotId] = cells;
+  }
+
+  function replaceAllCells(
+    entries: readonly {
+      readonly forestPlotId: string;
+      readonly cells: readonly CellCoordWire[];
+    }[],
+  ): void {
+    const map: Record<string, readonly CellCoordWire[]> = {};
+    for (const entry of entries) {
+      map[entry.forestPlotId] = entry.cells;
+    }
+    cellsByPlotId.value = map;
+  }
+
   function removeWithTrees(forestPlotId: string): void {
     collection.remove(forestPlotId);
     delete treesByPlotId.value[forestPlotId];
+    delete cellsByPlotId.value[forestPlotId];
   }
 
   function reset(): void {
     collection.clear();
     treesByPlotId.value = {};
+    cellsByPlotId.value = {};
   }
 
   return {
@@ -139,15 +181,19 @@ export const useForestryStore = defineStore('forestry', () => {
     upsertMany: collection.upsertMany,
     replaceAll: collection.replaceAll,
     treesByPlotId,
+    cellsByPlotId,
     totalCellCount,
     totalFellableTrees,
     ofFarm,
+    cellsOf,
     treesOf,
     standingTreesOf,
     asTreeView,
     derive,
     fellableVolumeAt,
     applyTrees,
+    applyCells,
+    replaceAllCells,
     replacePlotTrees,
     remove: removeWithTrees,
     reset,

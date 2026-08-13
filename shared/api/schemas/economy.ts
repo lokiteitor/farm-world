@@ -13,7 +13,7 @@
 // travel: it is an internal guarantee and no client has any use for it.
 
 import { z } from 'zod';
-import { LedgerType, StorageResource } from '../../domain/enums.js';
+import { LEDGER_TYPES, LedgerType, StorageResource } from '../../domain/enums.js';
 import {
   countSchema,
   cursorSchema,
@@ -135,9 +135,26 @@ export const ledgerEntryDtoSchema = z.strictObject({
 });
 export type LedgerEntryDto = z.infer<typeof ledgerEntryDtoSchema>;
 
+/**
+ * Page, and the two filters of the query.
+ *
+ * `type` may be repeated, so a panel can ask for salaries and maintenance at once without a
+ * request per kind; a single value is accepted as well, which is what one `?type=` produces.
+ * The interval is `[fromGameMs, toGameMs)`, the half-open window the whole system uses, so
+ * two consecutive pages of intervals neither overlap nor lose an entry.
+ *
+ * `queryLedger` and `sumLedger` implemented and tested both filters from W5, and a strict
+ * object without them refused the request at the boundary before it reached the module
+ * (docs/handoff/NOTES-w5c.md 2.3).
+ */
 export const ledgerQuerySchema = z.strictObject({
   limit: limitQuerySchema(MAX_LEDGER_PAGE, DEFAULT_LEDGER_PAGE),
   cursor: cursorSchema.optional(),
+  type: z
+    .union([z.enum(LedgerType), z.array(z.enum(LedgerType)).min(1).max(LEDGER_TYPES.length)])
+    .optional(),
+  fromGameMs: gameMsSchema.optional(),
+  toGameMs: gameMsSchema.optional(),
 });
 export type LedgerQuery = z.infer<typeof ledgerQuerySchema>;
 

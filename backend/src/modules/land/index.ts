@@ -1,36 +1,45 @@
-// Modulo `land`. Tierra: presupuesto de una seleccion y compra de las celdas comprables.
+// Module `land`: the quote of a selection and the purchase of the cells it can buy.
 //
-// Andamiaje creado por W3-A con la ruta y la firma definitivas. Propietario del contenido:
-// W4-A, que sustituye el cuerpo de este fichero sin tocar `src/app.ts` ni el registro de
-// rutas (plan seccion 11, regla 3).
+// Owner: workflow W4-A. Replaces the scaffolding workflow W3-A left with the definitive
+// path and signature (plan section 11, rule 3): `src/app.ts` and the route registry were
+// not touched, only the body of this module. `defineStubRoute` became `defineRoute`, in
+// place.
 //
-// Rutas del area `land` que le corresponden, en el orden del contrato:
+// The shape of the module:
 //
-//   POST /api/land/quote
-//   POST /api/land/purchase
+//   - `service.ts` is the domain: the normalisation of a selection, the quote and the
+//     purchase. It knows nothing about HTTP.
+//   - `routes.ts` is the HTTP surface, which is the conversion between the wire types and
+//     the domain types and nothing else.
 //
-// Cada una responde hoy 501 con el codigo `NOT_IMPLEMENTED` y su clave en los detalles, y ya
-// valida su peticion, arrastra sus guardas y figura en la documentacion OpenAPI: lo unico que
-// falta es el cuerpo.
+// The grid is reached only through `modules/world/service.ts`, which is the internal API
+// of the earlier phase and the one place that defines effective terrain, ownership and
+// claiming. `land`, `farms` and `fields` are siblings of this phase and never import each
+// other; anything they share goes through the world module (`docs/ownership.md`, rule 4).
 //
-// Dos puntos que el contrato ya declara y el modulo debe honrar: `expectedTotal` del cuerpo de
-// la compra se compara con el total propio y se rechaza con `VALIDATION_FAILED` si difieren
-// (docs/handoff/NOTES-W2c.md, apartado 1.3), y la doble compra de la misma celda se resuelve
-// con insercion que ignora conflictos, cobrando solo lo realmente adquirido (plan 5.4).
+// The two rules of the GDD this module enforces, and where they live:
 //
-// Como sustituirlo: cambiar cada `defineStubRoute(app, clave)` por
-// `defineRoute(app, clave, manejador)` con el manejador tipado, que recibe la peticion con
-// `params`, `query` y `body` ya validados y devuelve exactamente `RouteReply<clave>`. Todo
-// camino mutante pasa por `withPlayerAdvanced` de `lib/advancePlayer.ts`, que es lo que
-// devuelve el `seq` que la respuesta secuenciada tiene que llevar.
+//   - Only grass and forest can be bought, and a cell that already has an owner is not on
+//     the market (GDD sections 8, 13 and 14). The rule is `canPurchase` of
+//     `shared/rules/selection.ts`, which the client calls while dragging.
+//   - The price is `basePriceByTerrain x locationMultiplier x accessibilityMultiplier`,
+//     with grass at 120, forest at 70 and both multipliers fixed at 1.0 for the MVP (GDD
+//     section 115). The rule is `cellPrice` of `shared/rules/pricing.ts` and the numbers
+//     are in `shared/config/economy.ts`.
+//
+// Buying changes ownership and nothing else: it creates no field (GDD sections 13 and 14),
+// and buying forest materialises no trees, which happens when the forest plot is created
+// (plan section 2.2).
 
-import { type FastifyInstance } from 'fastify';
-import { defineStubRoute } from '../../plugins/routes.js';
-import { routeKeysOfArea } from '../../shared/index.js';
+export { registerLandRoutes } from './routes.js';
 
-/** Registra las rutas del area `land`. Invocada una vez por `src/app.ts`. */
-export function registerLandRoutes(app: FastifyInstance): void {
-  for (const key of routeKeysOfArea('land')) {
-    defineStubRoute(app, key);
-  }
-}
+export {
+  normaliseSelection,
+  purchaseLand,
+  quoteSelection,
+  type LandPurchaseInput,
+  type LandPurchaseOutcome,
+  type LandQuote,
+  type QuotedCell,
+  type TerrainSubtotal,
+} from './service.js';

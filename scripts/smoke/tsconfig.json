@@ -1,0 +1,29 @@
+{
+  // Type-checking project of the smoke test.
+  //
+  // Owner: workflow W7-B. Same shape and same reasoning as `tools/balance/tsconfig.json`:
+  // `make typecheck` walks the three npm projects and not this script, so the project exists
+  // so that `npx tsc -p scripts/smoke/tsconfig.json` checks the scenario with the strictness
+  // of the rest of the repository, and so that an editor resolves `../../shared/**` the way
+  // `tsx` does at run time. The `smoke` target of the Makefile runs it before executing, which
+  // is what plan section 10 means when it asks that the script itself be checked against the
+  // contract instead of against literals: an assertion written against a field the schemas no
+  // longer declare fails to compile before it can fail as a false negative at run time.
+  //
+  // `include` reaches `shared/` because the script imports it as source and not as a built
+  // package, exactly like the balance calculator: it is what makes every request body, every
+  // reply and every pure rule the same declaration the server was built from.
+  //
+  // `typeRoots` points at the backend, which is where `@types/node` is installed and where
+  // `make smoke` runs `tsx` from. `scripts/` is deliberately not a fourth npm project: the
+  // four `package.json` of the repository are frozen since W1 (plan section 11, rule 2).
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "lib": ["ES2023"],
+    "types": ["node"],
+    "typeRoots": ["../../backend/node_modules/@types", "../../node_modules/@types"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts", "../../shared/**/*.ts"],
+  "exclude": ["../../shared/**/__tests__/**"]
+}

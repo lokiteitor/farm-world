@@ -499,9 +499,14 @@ export function createCellRepository(deps: CellRepositoryDeps): CellRepository {
     const sql =
       'SELECT wc."chunkX", wc."chunkY", wc."idx", wc."terrainOverride", wc."ownerPlayerId", ' +
       'wc."landUse", wc."fieldId", wc."forestPlotId", wc."buildingId", ' +
+      // Every tree that still occupies its cell, which is not the same as `STANDING`: a tree
+      // marked by a felling in flight (`MARKED_FOR_HARVEST`, GDD section 132) is standing in
+      // the world until the task completes, and reporting its cell as empty made the use
+      // layer draw it as free ground for the whole duration of the felling
+      // (docs/handoff/NOTES-w6c.md 2.3).
       'EXISTS (SELECT 1 FROM "trees" t WHERE t."worldId" = wc."worldId" ' +
       'AND t."cellX" = wc."cellX" AND t."cellY" = wc."cellY" ' +
-      `AND t."status" = 'STANDING') AS "hasStandingTree" ` +
+      `AND t."status" <> 'FELLED') AS "hasStandingTree" ` +
       'FROM "world_cells" wc ' +
       `WHERE wc."worldId" = $1::uuid AND (wc."chunkX", wc."chunkY") IN (${chunkTuples(chunks.length, 2)}) ` +
       'ORDER BY wc."chunkX", wc."chunkY", wc."idx"';

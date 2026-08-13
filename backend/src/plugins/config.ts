@@ -48,9 +48,11 @@ export const SERVICE_ENV_VARS = [
   'REFRESH_TTL',
   'GAME_RATE_NUM',
   'GAME_RATE_DEN',
+  'GAME_RATE_APPLY_ON_BOOT',
   'SCHEDULE_HORIZON_REAL_MS',
   'WORLD_SEED',
   'PORT',
+  'METRICS_PORT',
   'LOG_LEVEL',
   'DEV_ENDPOINTS',
   'CORS_ORIGIN',
@@ -88,12 +90,13 @@ export const INFRASTRUCTURE_ENV_VARS = [
  * Variables the processes read that `.env.example` does not declare, because they
  * are injected by the compose files and never by the template.
  *
- * `METRICS_PORT` is the port of the metrics listener of the worker, which has no
- * HTTP surface of its own (docs/handoff/NOTES-W1.md, item 3);
- * `infra/prometheus/prometheus.yml` scrapes `worker:9464/metrics`. `NODE_ENV` and
- * `HOST` are conventions of the runtime.
+ * `NODE_ENV` and `HOST` are conventions of the runtime. `METRICS_PORT` used to be
+ * here and is now declared by the template like any other variable the code reads:
+ * `docker-compose.yml` injects it into the worker and
+ * `infra/prometheus/prometheus.yml` scrapes `worker:9464/metrics`, so a value the
+ * template hid was a value nobody could find (docs/handoff/NOTES-w3a.md 1.2).
  */
-export const CONTAINER_ENV_VARS = ['NODE_ENV', 'HOST', 'METRICS_PORT'] as const;
+export const CONTAINER_ENV_VARS = ['NODE_ENV', 'HOST'] as const;
 
 // ---------------------------------------------------------------------------
 // Coercions
@@ -173,6 +176,14 @@ export const appConfigSchema = z.object({
   // --- Game clock -----------------------------------------------------------
   gameRateNum: integerEnv({ min: 0 }).default(DEFAULT_GAME_RATE.rateNum),
   gameRateDen: integerEnv({ min: 1 }).default(DEFAULT_GAME_RATE.rateDen),
+  /**
+   * Whether a boot may re-anchor the world clock from the two variables above.
+   *
+   * False by default: the multiplier of a live world is domain state and is changed with
+   * `retimeWorld`, not with a configuration file (ADR-0007). The variables still decide the
+   * multiplier of a world that does not exist yet, which is what a fresh install is.
+   */
+  gameRateApplyOnBoot: booleanEnv.default(false),
   scheduleHorizonRealMs: integerEnv({ min: 1000 }).default(SCHEDULE_HORIZON_REAL_MS),
 
   // --- World ----------------------------------------------------------------
@@ -242,6 +253,7 @@ function shape(env: RawEnv): Record<string, unknown> {
     refreshTtlSeconds: present('REFRESH_TTL'),
     gameRateNum: present('GAME_RATE_NUM'),
     gameRateDen: present('GAME_RATE_DEN'),
+    gameRateApplyOnBoot: present('GAME_RATE_APPLY_ON_BOOT'),
     scheduleHorizonRealMs: present('SCHEDULE_HORIZON_REAL_MS'),
     worldSeed: present('WORLD_SEED'),
     port: present('PORT'),
@@ -276,6 +288,7 @@ const ENV_NAME_BY_FIELD: Readonly<Record<string, string>> = {
   refreshTtlSeconds: 'REFRESH_TTL',
   gameRateNum: 'GAME_RATE_NUM',
   gameRateDen: 'GAME_RATE_DEN',
+  gameRateApplyOnBoot: 'GAME_RATE_APPLY_ON_BOOT',
   scheduleHorizonRealMs: 'SCHEDULE_HORIZON_REAL_MS',
   worldSeed: 'WORLD_SEED',
   port: 'PORT',

@@ -1,0 +1,278 @@
+{
+  "contractVersion": "0.1.0",
+  "scenarios": {
+    "minimumSetup": {
+      "title": "Setup minimo viable, compra completa el dia uno",
+      "kpis": {
+        "minimumSetupCost": "146100.0000",
+        "holdingCostPerCycle": "25688.7786",
+        "revenuePerCycle": "2475.0000",
+        "revenueToCostRatio": 0.09634556934520819,
+        "gameHoursToFirstBreakEven": null,
+        "capitalCushionAfterSetup": "13900.0000",
+        "cycleGameHours": 325.3417366946779,
+        "netPerCycle": "-23213.7786",
+        "breakEvenCycles": null,
+        "weedLevelAtHarvestBp": 10000,
+        "weedGrowingGameHours": 246.06722689075633,
+        "setup": {
+          "landCells": 330,
+          "land": "39600.0000",
+          "buildings": "23000.0000",
+          "machinery": "83500.0000",
+          "total": "146100.0000"
+        },
+        "holding": {
+          "wages": "4880.1260",
+          "maintenance": "12037.6442",
+          "operating": "8771.0084",
+          "interest": "0.0000",
+          "total": "25688.7786",
+          "windowGameHours": 325.3417363888889
+        },
+        "yield": {
+          "baseLiters": 22500,
+          "fertilityMultiplier": 1,
+          "fertilizationMultiplier": 1,
+          "weedPenalty": 0.5,
+          "liters": 11250
+        },
+        "phases": [
+          {
+            "state": "VIRGIN",
+            "operation": "PLOW",
+            "gameHours": 70.0280112044818,
+            "machineTypes": [
+              "TRACTOR",
+              "PLOW"
+            ]
+          },
+          {
+            "state": "PLOWED",
+            "operation": "SEED",
+            "gameHours": 61.27450980392157,
+            "machineTypes": [
+              "TRACTOR",
+              "SEEDER"
+            ]
+          },
+          {
+            "state": "SEEDED",
+            "operation": null,
+            "gameHours": 6,
+            "machineTypes": []
+          },
+          {
+            "state": "GERMINATING",
+            "operation": null,
+            "gameHours": 12,
+            "machineTypes": []
+          },
+          {
+            "state": "GROWING",
+            "operation": null,
+            "gameHours": 78,
+            "machineTypes": []
+          },
+          {
+            "state": "READY_TO_HARVEST",
+            "operation": "HARVEST",
+            "gameHours": 98.03921568627452,
+            "machineTypes": [
+              "HARVESTER",
+              "TRAILER"
+            ]
+          }
+        ]
+      }
+    },
+    "staggered": {
+      "title": "Setup minimo viable, compra escalonada",
+      "kpis": {
+        "minimumSetupCost": "146100.0000",
+        "holdingCostPerCycle": "20006.2156",
+        "revenuePerCycle": "2475.0000",
+        "revenueToCostRatio": 0.12371155292358241,
+        "gameHoursToFirstBreakEven": null,
+        "capitalCushionAfterSetup": "13900.0000",
+        "cycleGameHours": 325.3417366946779,
+        "netPerCycle": "-17531.2156",
+        "breakEvenCycles": null,
+        "weedLevelAtHarvestBp": 10000,
+        "weedGrowingGameHours": 246.06722689075633,
+        "setup": {
+          "landCells": 330,
+          "land": "39600.0000",
+          "buildings": "23000.0000",
+          "machinery": "83500.0000",
+          "total": "146100.0000"
+        },
+        "holding": {
+          "wages": "4880.1260",
+          "maintenance": "6355.0812",
+          "operating": "8771.0084",
+          "interest": "0.0000",
+          "total": "20006.2156",
+          "windowGameHours": 325.3417363888889
+        },
+        "yield": {
+          "baseLiters": 22500,
+          "fertilityMultiplier": 1,
+          "fertilizationMultiplier": 1,
+          "weedPenalty": 0.5,
+          "liters": 11250
+        },
+        "phases": [
+          {
+            "state": "VIRGIN",
+            "operation": "PLOW",
+            "gameHours": 70.0280112044818,
+            "machineTypes": [
+              "TRACTOR",
+              "PLOW"
+            ]
+          },
+          {
+            "state": "PLOWED",
+            "operation": "SEED",
+            "gameHours": 61.27450980392157,
+            "machineTypes": [
+              "TRACTOR",
+              "SEEDER"
+            ]
+          },
+          {
+            "state": "SEEDED",
+            "operation": null,
+            "gameHours": 6,
+            "machineTypes": []
+          },
+          {
+            "state": "GERMINATING",
+            "operation": null,
+            "gameHours": 12,
+            "machineTypes": []
+          },
+          {
+            "state": "GROWING",
+            "operation": null,
+            "gameHours": 78,
+            "machineTypes": []
+          },
+          {
+            "state": "READY_TO_HARVEST",
+            "operation": "HARVEST",
+            "gameHours": 98.03921568627452,
+            "machineTypes": [
+              "HARVESTER",
+              "TRAILER"
+            ]
+          }
+        ]
+      }
+    },
+    "gddWeedAssumption": {
+      "title": "Primer ciclo con la hipotesis de malezas de GDD §119",
+      "kpis": {
+        "minimumSetupCost": "146100.0000",
+        "holdingCostPerCycle": "25688.7786",
+        "revenuePerCycle": "4554.0000",
+        "revenueToCostRatio": 0.17727584759518306,
+        "gameHoursToFirstBreakEven": null,
+        "capitalCushionAfterSetup": "13900.0000",
+        "cycleGameHours": 325.3417366946779,
+        "netPerCycle": "-21134.7786",
+        "breakEvenCycles": null,
+        "weedLevelAtHarvestBp": 2000,
+        "weedGrowingGameHours": 246.06722689075633,
+        "setup": {
+          "landCells": 330,
+          "land": "39600.0000",
+          "buildings": "23000.0000",
+          "machinery": "83500.0000",
+          "total": "146100.0000"
+        },
+        "holding": {
+          "wages": "4880.1260",
+          "maintenance": "12037.6442",
+          "operating": "8771.0084",
+          "interest": "0.0000",
+          "total": "25688.7786",
+          "windowGameHours": 325.3417363888889
+        },
+        "yield": {
+          "baseLiters": 22500,
+          "fertilityMultiplier": 1,
+          "fertilizationMultiplier": 1,
+          "weedPenalty": 0.08000000000000002,
+          "liters": 20700
+        },
+        "phases": [
+          {
+            "state": "VIRGIN",
+            "operation": "PLOW",
+            "gameHours": 70.0280112044818,
+            "machineTypes": [
+              "TRACTOR",
+              "PLOW"
+            ]
+          },
+          {
+            "state": "PLOWED",
+            "operation": "SEED",
+            "gameHours": 61.27450980392157,
+            "machineTypes": [
+              "TRACTOR",
+              "SEEDER"
+            ]
+          },
+          {
+            "state": "SEEDED",
+            "operation": null,
+            "gameHours": 6,
+            "machineTypes": []
+          },
+          {
+            "state": "GERMINATING",
+            "operation": null,
+            "gameHours": 12,
+            "machineTypes": []
+          },
+          {
+            "state": "GROWING",
+            "operation": null,
+            "gameHours": 78,
+            "machineTypes": []
+          },
+          {
+            "state": "READY_TO_HARVEST",
+            "operation": "HARVEST",
+            "gameHours": 98.03921568627452,
+            "machineTypes": [
+              "HARVESTER",
+              "TRAILER"
+            ]
+          }
+        ]
+      }
+    }
+  },
+  "weeds": {
+    "ratePerGameHourBp": 60,
+    "growingGameHours": 246.06722689075633,
+    "saturationGameHours": 166.66666666666666,
+    "unclampedLevelBp": 14764.03361344538,
+    "levelAtHarvestBp": 10000,
+    "penalty": 0.5,
+    "liters": 11250,
+    "revenue": "2475.0000",
+    "publishedLevelBp": 2000,
+    "publishedLiters": 20700,
+    "publishedRevenue": "4554.0000",
+    "litersLost": 9450,
+    "revenueLost": "2079.0000",
+    "growingGameHoursAfterSowing": 176.03921568627453,
+    "levelAfterCultivateBp": 10000,
+    "cultivateAvoidsSaturation": false
+  }
+}

@@ -73,21 +73,6 @@ nueva.
 
 Mitigacion adoptada: ninguna necesaria. Ninguna ruta nueva se ha creado sin dueno.
 
-### 2.3 `CORS_ORIGIN` de la integracion continua
-
-Categoria: cambio en fichero congelado
-Ficheros afectados: `.github/workflows/ci.yml`
-Propietario del cambio: W7-A
-
-El trabajo declara `CORS_ORIGIN: http://localhost:3001`, que era el puerto del servidor de desarrollo
-antes de parametrizarlo y ahora es 3100. No se ha cambiado porque en integracion continua no hay
-navegador y ningun trabajo levanta el cliente, de modo que el valor no se ejercita; cambiarlo sin
-necesidad habria tocado un fichero congelado por estetica. Conviene alinearlo cuando W7 revise el
-fichero, junto con las variables de la semilla si el trabajo `integration` acaba ejecutandola.
-
-Mitigacion adoptada: los servicios de la integracion continua publican sus propios puertos canonicos y
-son independientes de `.env`, de modo que nada mas del fichero depende de este parcheo.
-
 ### 2.4 Adelgazamiento de la etapa `runtime` de la imagen del backend
 
 Categoria: optimizacion, no bloquea
@@ -101,17 +86,6 @@ No se ha aplicado porque es tamano de imagen y no correccion, y porque la etapa 
 ambos casos.
 
 Mitigacion adoptada: la copia del arbol completo, que ya estaba.
-
-### 2.5 Politica de reinicio del servicio `worker`
-
-Categoria: cambio en fichero congelado
-Ficheros afectados: `docker-compose.yml`
-Propietario del cambio: W7-A, a peticion de W3-A
-
-Sigue en `restart: "no"` porque el punto de entrada continua siendo el andamiaje de W1, que registra una
-linea y termina. El cambio a `unless-stopped` corresponde al momento en que W3 lo convierta en consumidor
-de larga vida, no antes: adelantarlo produciria un ciclo de reinicios. La linea lleva su comentario en el
-propio fichero.
 
 ## 3. Discrepancias detectadas
 
@@ -168,3 +142,46 @@ Las dos migraciones aplicadas, sin deriva. Mundo y jugador de desarrollo sembrad
 existen ni las pruebas de integracion del backend ni `scripts/smoke/smoke.ts`, cuyos propietarios son los
 agentes de W3 a W6 y W7-A. `make smoke` y `make balance` detectan la ausencia y nombran al propietario en
 el mensaje de error, que es el comportamiento previsto por el plan.
+
+## Resuelto
+
+Las notas aplicadas se conservan aqui con su numeracion original, porque otros documentos y
+varios comentarios de codigo las citan por numero.
+
+### 2.5 Politica de reinicio del servicio `worker`
+
+Aplicado por W7-A (integracion). Ver la nota 4 de `NOTES-W1.md`.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero congelado
+Ficheros afectados: `docker-compose.yml`
+Propietario del cambio: W7-A, a peticion de W3-A
+
+Sigue en `restart: "no"` porque el punto de entrada continua siendo el andamiaje de W1, que registra una
+linea y termina. El cambio a `unless-stopped` corresponde al momento en que W3 lo convierta en consumidor
+de larga vida, no antes: adelantarlo produciria un ciclo de reinicios. La linea lleva su comentario en el
+propio fichero.
+
+### 2.3 `CORS_ORIGIN` de la integracion continua
+
+Aplicado por W7-A (integracion). `.github/workflows/ci.yml` declara `CORS_ORIGIN: http://localhost:3100`,
+que es el puerto publicado, y anade `METRICS_PORT`. Se aprovecho la apertura del fichero para anadir al
+trabajo `static` el paso `make generate`: `backend/src/generated/prisma` esta en `.gitignore` y tanto la
+comprobacion de tipos como la suite unitaria del backend, que `make test-unit` ejecuta desde esta ventana,
+lo necesitan.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero congelado
+Ficheros afectados: `.github/workflows/ci.yml`
+Propietario del cambio: W7-A
+
+El trabajo declara `CORS_ORIGIN: http://localhost:3001`, que era el puerto del servidor de desarrollo
+antes de parametrizarlo y ahora es 3100. No se ha cambiado porque en integracion continua no hay
+navegador y ningun trabajo levanta el cliente, de modo que el valor no se ejercita; cambiarlo sin
+necesidad habria tocado un fichero congelado por estetica. Conviene alinearlo cuando W7 revise el
+fichero, junto con las variables de la semilla si el trabajo `integration` acaba ejecutandola.
+
+Mitigacion adoptada: los servicios de la integracion continua publican sus propios puertos canonicos y
+son independientes de `.env`, de modo que nada mas del fichero depende de este parcheo.

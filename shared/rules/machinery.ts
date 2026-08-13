@@ -151,6 +151,18 @@ export interface OperationCompatibilityInput {
    * ownership requirement in the MVP and not an active transport restriction.
    */
   readonly ownedMachineTypes: readonly MachineType[];
+  /**
+   * Type the caller named as the powered machine, when the caller knows the role.
+   *
+   * GDD section 90 is a table of roles and not a bag of types: `PLOW` is "tractor plus
+   * plough", never "plough plus tractor". Without this the two are indistinguishable,
+   * because the multiset of types is the same, and the server would accept a request
+   * whose roles are swapped. Optional so that a caller with no roles to offer — the
+   * panel asking "what is missing from this holding" — keeps working unchanged.
+   */
+  readonly poweredMachineType?: MachineType | null | undefined;
+  /** Type the caller named as the implement, under the same rule. */
+  readonly implementMachineType?: MachineType | null | undefined;
 }
 
 export interface CompatibilityOptions {
@@ -175,11 +187,12 @@ function missingMachineCode(type: MachineType, role: MachineRole): ValidationCod
  * Every rule of GDD section 90 that the proposed combination fails, in a stable
  * order and without duplicates.
  *
- * The checks, in order: the operation exists in the table; the powered machine it
- * requires is offered; the implement it requires is offered; the implement can
- * actually be towed by that powered machine (GDD sections 88 and 89); nothing
- * superfluous is offered, because reserving a machine a task does not need would
- * block it for no reason; and every possession requirement is owned.
+ * The checks, in order: the operation exists in the table; each machine whose role the
+ * caller named carries the type that role demands; the powered machine it requires is
+ * offered; the implement it requires is offered; the implement can actually be towed by
+ * that powered machine (GDD sections 88 and 89); nothing superfluous is offered, because
+ * reserving a machine a task does not need would block it for no reason; and every
+ * possession requirement is owned.
  */
 export function explainIncompatibility(
   input: OperationCompatibilityInput,
@@ -208,6 +221,32 @@ export function explainIncompatibility(
     offered.splice(index, 1);
     return true;
   };
+
+  // The roles, when the caller knows them, before the counting. A request that names the
+  // implement as the powered machine and the powered machine as the implement offers the
+  // right multiset of types and the wrong table row, and the table of GDD section 90 is
+  // written by role.
+  if (
+    input.poweredMachineType !== undefined &&
+    input.poweredMachineType !== null &&
+    input.poweredMachineType !== requirement.poweredMachine
+  ) {
+    add(ValidationCode.POWERED_MACHINE_REQUIRED);
+  }
+  if (input.implementMachineType !== undefined && input.implementMachineType !== null) {
+    if (requirement.requiredImplement === null) {
+      add(ValidationCode.IMPLEMENT_NOT_ALLOWED);
+    } else if (input.implementMachineType !== requirement.requiredImplement) {
+      add(
+        input.implementMachineType === requirement.poweredMachine
+          ? ValidationCode.IMPLEMENT_NOT_ALLOWED
+          : missingMachineCode(
+              requirement.requiredImplement,
+              catalogue[requirement.requiredImplement].role,
+            ),
+      );
+    }
+  }
 
   const powered = catalogue[requirement.poweredMachine];
   if (!take(requirement.poweredMachine)) {

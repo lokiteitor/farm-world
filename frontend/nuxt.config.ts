@@ -20,8 +20,12 @@ export default defineNuxtConfig({
 
   css: ['~/assets/tokens.css'],
 
+  // The published port of the client is `FRONTEND_DEV_PORT`, 3100, which is what
+  // `.env.example`, the Makefile and `CORS_ORIGIN` name. The literal 3001 that was
+  // here predated that variable and made the four disagree, so every verification
+  // round since W3 had to pass `--port` by hand (docs/handoff/NOTES-w3d.md 1).
   devServer: {
-    port: 3001,
+    port: Number(process.env.FRONTEND_DEV_PORT ?? 3100),
     host: '0.0.0.0',
   },
 

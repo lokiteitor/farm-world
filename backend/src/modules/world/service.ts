@@ -162,7 +162,14 @@ export function ownershipOf(ownerPlayerId: string | null, playerId: PlayerId): C
   return ownerPlayerId === playerId ? CellOwnership.PLAYER : CellOwnership.OTHER;
 }
 
-/** Cells of the set that carry a standing tree, keyed by `cellKey`. One statement. */
+/**
+ * Cells of the set that carry a tree still occupying them, keyed by `cellKey`. One statement.
+ *
+ * `MARKED_FOR_HARVEST` counts. A tree marked by a felling in flight has not been cut yet
+ * (GDD section 132), so its cell is not available: filtering by `STANDING` alone made the
+ * shared rule `canClearCell` accept those cells while the felling ran
+ * (docs/handoff/NOTES-w6c.md 2.3).
+ */
 export async function standingTreeCells(
   db: Db,
   world: World,
@@ -175,7 +182,7 @@ export async function standingTreeCells(
   const rows = await db.tree.findMany({
     where: {
       worldId: world.id,
-      status: 'STANDING',
+      status: { in: ['STANDING', 'MARKED_FOR_HARVEST'] },
       OR: cells.map((cell) => ({ cellX: cell.cellX, cellY: cell.cellY })),
     },
     select: { cellX: true, cellY: true },

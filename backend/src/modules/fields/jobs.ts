@@ -1,52 +1,99 @@
-// Manejadores de la cola que posee el modulo `fields`.
+// The scheduled event this module owns: the automatic phase transitions of the crop cycle.
 //
-// Andamiaje creado por W3-A con la firma definitiva. Propietario del contenido: W4-C.
+// Owner: workflow W4-C. Module `fields`. Replaces the scaffolding workflow W3-A left with
+// the definitive signature, so neither `src/handlers.ts`, nor the queue, nor the point of
+// advance is reopened (plan section 11, rule 3).
 //
-// El registro de manejadores de `lib/advancePlayer.ts` esta predeclarado con los seis tipos de
-// `ScheduledEventKind`, y `src/handlers.ts` conecta cada uno con el fichero del modulo que lo
-// posee. Sustituir el cuerpo de esta funcion es por tanto todo lo que hace falta: ni el
-// registro, ni la cola, ni el punto de avance se vuelven a tocar (plan seccion 11, regla 3).
+// `SEEDED -> GERMINATING -> GROWING -> READY_TO_HARVEST` are the three transitions GDD
+// section 76 marks as automatic, and they are hybrid in the sense of plan section 6.5: the
+// pure projection is the authority and this job only materialises the result and notifies
+// it, recomputing it with the very same function. Nothing here decides anything the
+// projection has not already decided, which is what makes the two paths agree:
 //
-// Contrato del manejador, que no cambia al implementarlo:
+//   - The job path. The alarm clock fires, `advancePlayer` claims the row and calls this,
+//     which calls `materializeProjectedPhase` and emits `FIELD_UPSERTED`.
+//   - The projection path. The player asks for a harvest before the job ran, the write path
+//     calls `materializeProjectedPhase` inside its own transaction, and the field is already
+//     `READY_TO_HARVEST` when the operation is validated.
 //
-//   - Corre dentro de la transaccion del avance y despues de que el evento haya sido reclamado
-//     con una actualizacion condicional, de modo que NO debe volver a comprobar el estado: si
-//     esta funcion se ejecuta, este proceso gano la carrera y es el unico que la ejecuta.
-//   - Todo efecto debe estar en esta transaccion. Encolar o publicar se hace registrando en
-//     `context.outbox`, que se vacia despues del commit.
-//   - Los sobres para el cliente se declaran con `context.emit(...)` y se escriben con el
-//     instante de vencimiento del evento, no con el de proceso: un trabajo que corrio tarde
-//     coloca el cambio donde ocurrio.
-//   - Nada de `Date.now()`: el instante es `context.reading` y el vencimiento
+// Both end on the same row, because both apply the same transitions at the same boundary
+// instants, and applying them twice does nothing the second time: the loop compares the
+// stored state with the projected one and stops when they agree.
+//
+// Contract of the handler, which does not change now that it is implemented:
+//
+//   - It runs inside the transaction of the advance and after the event was claimed with a
+//     conditional update, so it must NOT check the status again.
+//   - Every effect belongs to that transaction. Enqueueing and publishing are recorded in
+//     `context.outbox` and happen after the commit.
+//   - Frames are declared with `context.emit(...)` and are written with the due instant of
+//     the event, so a job that ran late places the change where it happened.
+//   - No `Date.now()`: the instant is `context.reading` and the due one is
 //     `context.event.dueGameMs`.
+//
+// One transition per event, and the next alarm clock is scheduled on the way out. A player
+// who returns after two hundred hours therefore crosses the three boundaries in three
+// passes of the queue, each one leaving the stored history exactly where a punctual run
+// would have left it. Catching every boundary up inside one handler would apply effects
+// past the instant the accruals were settled to, which is the error the ordering of
+// `advancePlayer` exists to avoid.
 
 import { type ScheduledEventHandler } from '../../lib/advancePlayer.js';
 import {
   ScheduledEventKind,
   type ScheduledEventKind as ScheduledEventKindType,
 } from '../../shared/index.js';
+import {
+  FIELD_REF_TYPE,
+  fieldUpsertedFrame,
+  findLiveField,
+  materializeProjectedPhase,
+  syncPhaseSchedule,
+} from './service.js';
 
 /** El tipo de evento agendado que posee este modulo. */
 export const OWNED_EVENT_KIND: ScheduledEventKindType = ScheduledEventKind.FIELD_ADVANCE_PHASE;
 
 /**
- * Manejador de `FIELD_ADVANCE_PHASE`: materializa la transicion de fase de un campo y la notifica (GDD §76, §80).
+ * Handler of `FIELD_ADVANCE_PHASE`: materialises the phase transition of a field and
+ * notifies it (GDD sections 76 and 80).
  *
- * Andamiaje: no aplica ningun efecto y lo hace constar. El evento ya quedo marcado como
- * procesado por el punto de avance, asi que un andamiaje que fallara convertiria cada
- * vencimiento en un reintento indefinido de BullMQ; uno que registra el hueco deja la misma
- * traza que un tipo sin manejador y no bloquea la simulacion de los demas.
+ * A missing reference, a field that no longer exists and a field of another player are all
+ * answered by doing nothing. None of the three is an error: an event outliving its subject
+ * is expected at least once, because a merge disposes of a field and a cancellation races
+ * with a due alarm clock, and failing here would turn the vencimiento into an endless BullMQ
+ * retry, since the point of advance has already marked the event as processed.
  */
 export const fieldAdvancePhaseHandler: ScheduledEventHandler = async (context) => {
-  context.services.metrics.scheduledEventsUnhandled.inc({ kind: context.event.kind });
-  context.services.logger.warn(
-    {
-      kind: context.event.kind,
-      scheduledEventId: context.event.id,
-      playerId: context.lock.playerId,
-      owner: 'W4-C',
-    },
-    'andamiaje de manejador: el evento vencio y su modulo todavia no esta implementado',
-  );
-  await Promise.resolve();
+  const { event, lock, reading, tx } = context;
+  if (event.refType !== FIELD_REF_TYPE || event.refId === null) {
+    context.services.logger.warn(
+      { kind: event.kind, scheduledEventId: event.id, playerId: lock.playerId },
+      'field phase event without a field reference',
+    );
+    return;
+  }
+
+  const field = await findLiveField(tx, lock.playerId, event.refId);
+  if (field === null) {
+    context.services.logger.debug(
+      { kind: event.kind, scheduledEventId: event.id, fieldId: event.refId },
+      'field phase event of a field that is no longer live',
+    );
+    return;
+  }
+
+  // The due instant and not the current one: the transition happened when the boundary was
+  // crossed, and the frame is written with that instant by `advancePlayer`.
+  const advanced = await materializeProjectedPhase(tx, field, event.dueGameMs);
+  if (advanced.cropCycleState === field.cropCycleState) {
+    // The alarm clock fired for a boundary the write path had already materialised. Nothing
+    // to apply and nothing to say; the schedule is still synchronised below.
+    await syncPhaseSchedule(tx, context.outbox, reading, advanced);
+    return;
+  }
+
+  await syncPhaseSchedule(tx, context.outbox, reading, advanced);
+  // The geometry did not change, so the frame carries no cells (`shared/ws/events.ts`).
+  context.emit(fieldUpsertedFrame(advanced, event.dueGameMs, null));
 };

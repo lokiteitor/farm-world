@@ -102,6 +102,40 @@ describe('el re-anclaje', () => {
     await harness.services.clock.retimeWorld({ rateNum: 1, rateDen: 1 });
   });
 
+  it('el arranque no cambia el multiplicador de un mundo vivo desde la configuracion', async () => {
+    // El punto 3 de ADR-0007: cambiar el multiplicador es una operacion de dominio y no una
+    // actualizacion de configuracion. Arrancar un segundo proceso con otro `GAME_RATE_NUM`
+    // en su entorno cambiaba el mundo vivo, en silencio, y un `dev/retime` no sobrevivia a
+    // un reinicio (hallazgo H2 de docs/revision-alcance.md).
+    const retimed = await harness.services.clock.retimeWorld({ rateNum: 36, rateDen: 1 });
+    const epochAfterRetime = retimed.reading.world.scheduleEpoch;
+
+    const ignored = await harness.services.clock.verifyOnStartup(
+      { rateNum: 1, rateDen: 1 },
+      { applyRateFromConfig: false },
+    );
+    expect(ignored.retimed).toBe(false);
+    expect(ignored.rateMismatchIgnored).toBe(true);
+    expect(ignored.reading.world.rateNum).toBe(36);
+    expect(ignored.reading.world.scheduleEpoch).toBe(epochAfterRetime);
+
+    // Con la autorizacion explicita si se re-ancla, por el mismo camino de dominio: se
+    // congela el pasado y se incrementa la epoca.
+    const applied = await harness.services.clock.verifyOnStartup(
+      { rateNum: 1, rateDen: 1 },
+      { applyRateFromConfig: true },
+    );
+    expect(applied.retimed).toBe(true);
+    expect(applied.rateMismatchIgnored).toBe(false);
+    expect(applied.reading.world.rateNum).toBe(1);
+    expect(applied.reading.world.scheduleEpoch).toBe(epochAfterRetime + 1);
+
+    // Y sin diferencia no hace nada, que es el caso normal.
+    const same = await harness.services.clock.verifyOnStartup({ rateNum: 1, rateDen: 1 });
+    expect(same.retimed).toBe(false);
+    expect(same.rateMismatchIgnored).toBe(false);
+  });
+
   it('pausa el mundo con rateNum cero, que es la unica mitigacion admisible', async () => {
     const paused = await harness.services.clock.retimeWorld({ rateNum: 0, rateDen: 1 });
     expect(paused.reading.paused).toBe(true);

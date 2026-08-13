@@ -393,3 +393,17 @@ Ninguna que mute el repositorio fuera del ambito asignado: sin `git`, sin `npm i
 `docker compose`, sin `prisma`, sin compilaciones de produccion. Se ejecutaron `make sync-types`,
 `npx nuxt prepare`, `npx vue-tsc`, `npx vitest run`, `npx nuxt dev` y, sobre
 `frontend/app` unicamente, `npx eslint --fix` y `npx prettier --write`.
+
+## Resuelto
+
+Este fichero no lleva apartado «Pendiente»: sus peticiones estan en el apartado 3, «Discrepancias
+detectadas». La que W7 tenia que resolver se recoge aqui con su numeracion original.
+
+### 3.1 El backend no responde nada a la trama `ping` del cliente
+
+Descartado deliberadamente por W7-A (integracion), y conviene que quede escrito para que no vuelva a
+plantearse como pendiente. El latido del cliente no depende de la respuesta —mide trafico entrante de
+cualquier tipo— y el servidor emite ya una trama `CLOCK` periodica, de modo que la conexion no se corta
+por esto. Anadir una etiqueta `PONG` seria un cambio del contrato compartido sin ningun consumidor, y
+responder `CLOCK` a cada `ping` multiplicaria el trafico de la unica trama que se envia a todo el mundo a
+la vez. Se conserva el comportamiento actual.

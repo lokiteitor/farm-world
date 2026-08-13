@@ -1,52 +1,95 @@
-// Manejadores de la cola que posee el modulo `tasks`.
+// The scheduled event this module owns: the completion of a task.
 //
-// Andamiaje creado por W3-A con la firma definitiva. Propietario del contenido: W6-A.
+// Owner: workflow W6-A. Module `tasks`. Replaces the scaffolding workflow W3-A left with
+// the definitive signature, so neither `src/handlers.ts`, nor the queue, nor the point of
+// advance is reopened (plan section 11, rule 3). With this handler and the one of
+// `modules/forestry`, `farm_world_scheduled_events_unhandled_total` is flat at zero.
 //
-// El registro de manejadores de `lib/advancePlayer.ts` esta predeclarado con los seis tipos de
-// `ScheduledEventKind`, y `src/handlers.ts` conecta cada uno con el fichero del modulo que lo
-// posee. Sustituir el cuerpo de esta funcion es por tanto todo lo que hace falta: ni el
-// registro, ni la cola, ni el punto de avance se vuelven a tocar (plan seccion 11, regla 3).
+// Contract of the handler, which does not change now that it is implemented:
 //
-// Contrato del manejador, que no cambia al implementarlo:
-//
-//   - Corre dentro de la transaccion del avance y despues de que el evento haya sido reclamado
-//     con una actualizacion condicional, de modo que NO debe volver a comprobar el estado: si
-//     esta funcion se ejecuta, este proceso gano la carrera y es el unico que la ejecuta.
-//   - Todo efecto debe estar en esta transaccion. Encolar o publicar se hace registrando en
-//     `context.outbox`, que se vacia despues del commit.
-//   - Los sobres para el cliente se declaran con `context.emit(...)` y se escriben con el
-//     instante de vencimiento del evento, no con el de proceso: un trabajo que corrio tarde
-//     coloca el cambio donde ocurrio.
-//   - Nada de `Date.now()`: el instante es `context.reading` y el vencimiento
+//   - It runs inside the transaction of the advance and after the event was claimed with a
+//     conditional update, so it must NOT check the status of the event again. What it does
+//     check is the status of the TASK, which is a different row and a different race: the
+//     player may have cancelled it in the millisecond before the alarm clock fired.
+//   - Every effect belongs to that transaction. Enqueueing and publishing are recorded in
+//     `context.outbox` and happen after the commit.
+//   - Frames are declared with `context.emit(...)` and are written with the due instant of
+//     the event, so a job that ran late places the change where it happened.
+//   - No `Date.now()`: the instant is `context.reading` and the due one is
 //     `context.event.dueGameMs`.
+//
+// WHY THE DUE INSTANT AND NOT THE CURRENT ONE, spelled out because it is the property the
+// whole design of plan section 6.4 rests on. A task assigned at t and 84 game hours long
+// completes at t + 84 h whether the worker was up or down: the completion is applied at
+// t + 84 h, the accruals were settled up to t + 84 h before this ran, the wear is prorated
+// over exactly those 84 hours and the weeds of the field grew for exactly that long. A
+// player who reconnects a week later and a player who watched the whole thing therefore
+// finish with byte identical rows, which is what makes BullMQ a requirement of punctuality
+// and not of correctness.
+//
+// A missing reference, a task that no longer exists and a task that is already finished are
+// all answered by doing nothing. None of the three is an error: an event outliving its
+// subject is expected at least once, and throwing here would roll back the claim the point
+// of advance already made and turn the vencimiento into an endless BullMQ retry (ADR-0016).
 
 import { type ScheduledEventHandler } from '../../lib/advancePlayer.js';
 import {
   ScheduledEventKind,
   type ScheduledEventKind as ScheduledEventKindType,
 } from '../../shared/index.js';
+import { TASK_REF_TYPE } from './record.js';
+import { completeTask, taskOfEvent } from './service.js';
 
 /** El tipo de evento agendado que posee este modulo. */
 export const OWNED_EVENT_KIND: ScheduledEventKindType = ScheduledEventKind.TASK_COMPLETE;
 
 /**
- * Manejador de `TASK_COMPLETE`: cierra la tarea, aplica su efecto y acredita la produccion (GDD §111).
- *
- * Andamiaje: no aplica ningun efecto y lo hace constar. El evento ya quedo marcado como
- * procesado por el punto de avance, asi que un andamiaje que fallara convertiria cada
- * vencimiento en un reintento indefinido de BullMQ; uno que registra el hueco deja la misma
- * traza que un tipo sin manejador y no bloquea la simulacion de los demas.
+ * Handler of `TASK_COMPLETE`: closes the task, applies the transition of its target and
+ * credits what it produced (GDD sections 105 and 111).
  */
 export const taskCompleteHandler: ScheduledEventHandler = async (context) => {
-  context.services.metrics.scheduledEventsUnhandled.inc({ kind: context.event.kind });
-  context.services.logger.warn(
+  const { event, lock, tx } = context;
+  if (event.refType !== TASK_REF_TYPE) {
+    context.services.logger.warn(
+      { kind: event.kind, scheduledEventId: event.id, playerId: lock.playerId },
+      'task completion event without a task reference',
+    );
+    return;
+  }
+
+  const task = await taskOfEvent(tx, lock.playerId, event.refId);
+  if (task === null) {
+    context.services.logger.debug(
+      { kind: event.kind, scheduledEventId: event.id, taskId: event.refId },
+      'task completion event of a task that no longer exists',
+    );
+    return;
+  }
+
+  const outcome = await completeTask(context, task, event.dueGameMs);
+  if (outcome === null) {
+    // The task was cancelled between the assignment and the alarm clock. The conditional
+    // transition of `completeTask` is what decided it, and a second delivery of this very
+    // event lands here as well.
+    context.services.logger.debug(
+      { kind: event.kind, scheduledEventId: event.id, taskId: task.id, status: task.status },
+      'task completion event of a task that was no longer in progress',
+    );
+    return;
+  }
+
+  context.services.logger.info(
     {
-      kind: context.event.kind,
-      scheduledEventId: context.event.id,
-      playerId: context.lock.playerId,
-      owner: 'W6-A',
+      taskId: outcome.task.id,
+      operation: outcome.task.operation,
+      playerId: lock.playerId,
+      workedGameHours: outcome.workedGameHours,
+      producedUnits: outcome.producedUnits,
+      storedUnits: outcome.storedUnits,
+      wastedUnits: outcome.wastedUnits,
+      skillBefore: outcome.skillBefore,
+      skillAfter: outcome.skillAfter,
     },
-    'andamiaje de manejador: el evento vencio y su modulo todavia no esta implementado',
+    'task completed',
   );
-  await Promise.resolve();
 };

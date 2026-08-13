@@ -181,7 +181,12 @@ export const PANEL_REGISTRY: Readonly<Record<PanelId, PanelDefinition>> = {
     id: 'building-placement',
     title: 'Colocar edificio',
     summary: 'Huella, precio real y compra del suelo cuando no es del jugador.',
-    surface: PanelSurface.MODAL,
+    // Side and not modal, which is the one surface of this table that was wrong rather
+    // than debatable: a modal takes the input away from the canvas, and this panel is the
+    // companion of a placement mode where the footprint has to follow the cursor and a
+    // click has to place it. Declared modal, the panel disabled the very gesture it exists
+    // to explain (docs/handoff/NOTES-w4f.md, section 2.2).
+    surface: PanelSurface.SIDE,
     tab: null,
     owner: 'W4-E',
     gddSections: [24, 115, 116],

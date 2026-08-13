@@ -107,10 +107,10 @@ async function main(): Promise<void> {
     logger.warn({ missing: services.jobs.missingHandlers }, 'job names with no handler');
   }
 
-  const startup = await services.clock.verifyOnStartup({
-    rateNum: config.gameRateNum,
-    rateDen: config.gameRateDen,
-  });
+  const startup = await services.clock.verifyOnStartup(
+    { rateNum: config.gameRateNum, rateDen: config.gameRateDen },
+    { applyRateFromConfig: config.gameRateApplyOnBoot },
+  );
   if (startup.retimed) {
     const rescheduled = await rescheduleHorizon(services.schedulerDeps);
     logger.info({ rescheduled }, 'horizon rescheduled after the start-up re-anchoring');

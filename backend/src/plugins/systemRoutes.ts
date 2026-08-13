@@ -42,11 +42,13 @@ export function registerSystemRoutes(app: FastifyInstance, startedAtRealMs: bigi
   // -------------------------------------------------------------------------
   // GET /health
   // -------------------------------------------------------------------------
+  // The status is set and the body is returned; `send` is not called. Doing both made
+  // Fastify log `FST_ERR_REP_ALREADY_SENT` at level `warn` on every single probe, which with
+  // a ten second health check is 8.640 lines of noise a day against a route that answered
+  // correctly all along (docs/handoff/NOTES-w6b.md 4.4).
   defineRoute(app, 'GET /health', async (request, reply) => {
     const body = await buildHealthReply(request.server.services, startedAtRealMs);
-    await reply.status(healthStatusCode(body)).send(body);
-    // The reply was sent with an explicit status, so the value returned here is only for the
-    // type of the handler; Fastify ignores it once `send` has run.
+    reply.status(healthStatusCode(body));
     return body;
   });
 
@@ -55,7 +57,7 @@ export function registerSystemRoutes(app: FastifyInstance, startedAtRealMs: bigi
   // -------------------------------------------------------------------------
   defineRoute(app, 'GET /metrics', async (request, reply) => {
     const rendered = await renderMetrics(request.server.services.metrics);
-    await reply.header('content-type', rendered.contentType).send(rendered.body);
+    reply.header('content-type', rendered.contentType);
     return rendered.body;
   });
 
