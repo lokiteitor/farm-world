@@ -171,6 +171,13 @@ services:
       # Nuxt proxies /api and /ws to this origin in development; host and
       # port of the dev server come from frontend/nuxt.config.ts.
       NUXT_PUBLIC_API_ORIGIN: http://backend:3000
+      # The container port, pinned. `env_file` is shared by every service, so the
+      # `PORT` the backend needs also reaches this one, and Nuxt honours `PORT`
+      # over `devServer.port`: without this line the dev server binds 3000 while
+      # Caddy proxies to 3001 and the published mapping targets 3001, so the
+      # whole client answers 502 through the reverse proxy. The host side stays
+      # parameterised in `ports` below.
+      PORT: '3001'
     ports:
       - '${FRONTEND_DEV_PORT:-3100}:3001'
     volumes:
