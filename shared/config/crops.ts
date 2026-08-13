@@ -23,7 +23,13 @@ export interface CropDefinition {
   readonly growthDurationGameHours: GameHours;
   /** Litres per cell before any multiplier (GDD sections 82 and 119). */
   readonly baseYieldPerCellLiters: number;
-  /** Fixed sale price, no fluctuation in the MVP (GDD sections 82, 119 and 123). */
+  /**
+   * Fixed sale price, no fluctuation in the MVP (GDD sections 82, 119 and 123).
+   * The 0.22 of GDD section 82 is replaced by the balance revision of 2026-08: with
+   * the literal catalogue the best possible cycle earned 4 950 against a holding cost
+   * above 25 000, and the report in docs/balance concluded the sale price was the
+   * most disproportionate constant. See docs/balance/informe-para-revision.md.
+   */
   readonly sellPricePerLiter: Money;
   /**
    * Whether the crop needs `CULTIVATED` before being sown. False for wheat (GDD
@@ -34,14 +40,11 @@ export interface CropDefinition {
   /** Machinery the full cycle needs (GDD section 82). */
   readonly requiredMachinery: readonly MachineType[];
   /**
-   * Weed growth while the field is in one of the states of GDD section 78, in basis
-   * points per game hour. 0.6 %/h is the literal value of GDD section 82.
-   *
-   * Consequence, recorded as the main finding of the balance report: 0.6 %/h over
-   * the 325 h cycle of GDD section 118 saturates the level at 100 %, not the 20 %
-   * that GDD section 119 assumes, so harvesting wheat without cultivating carries
-   * the maximum penalty of 50 % from GDD section 78. The value is implemented as
-   * published and the level saturates at 100 %; nothing is tuned (plan section 2.2).
+   * Weed growth while the field is in one of the states of `WEED_GROWTH_STATES`, in
+   * basis points per game hour. 0.6 %/h is the literal value of GDD section 82; with
+   * the strict reading of finding H8 (weeds grow only during `GROWING`) it yields
+   * 46.8 % at harvest over the 78 h growth phase, in the order of the ~20 % GDD
+   * section 119 assumes, instead of saturating at 100 % over the whole cycle.
    */
   readonly weedGrowthBpPerGameHour: Bp;
   /** Fertility lost per completed cycle (GDD sections 77 and 82). */
@@ -76,7 +79,7 @@ export const WHEAT: CropDefinition = {
   },
   growthDurationGameHours: gameHours(96),
   baseYieldPerCellLiters: 90,
-  sellPricePerLiter: Money.fromString('0.22'),
+  sellPricePerLiter: Money.fromString('0.90'),
   requiresCultivation: false,
   requiredMachinery: ['PLOW', 'SEEDER', 'HARVESTER'],
   weedGrowthBpPerGameHour: bp(60),

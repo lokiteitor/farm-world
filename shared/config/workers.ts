@@ -28,17 +28,20 @@ export const POOL_SKILL_MAX_BP: Bp = bp(9000);
  * Salary as a function of skill: `SALARY_INTERCEPT + SALARY_PER_SKILL_POINT x skill`,
  * with skill as a percentage in 0..100, then perturbed by noise and floored.
  *
- * The two coefficients are the least squares fit of the three examples of GDD section
- * 102 (skill 45 % asking 12 $/h, skill 62 % asking 18 $/h, skill 88 % asking 31 $/h),
- * rounded to two decimals. The fit gives 11.50, 19.15 and 30.85, so the largest
- * residual is 1.15 $/h on the middle example, well inside the noise band that GDD
- * section 102 itself prescribes ("salary correlated with skill plus noise").
+ * The original coefficients (-8.75 and 0.45) were the least squares fit of the three
+ * examples of GDD section 102 (skill 45 % asking 12 $/h, 62 % asking 18 $/h, 88 %
+ * asking 31 $/h). The balance revision of 2026-08 scaled the line down to -6 and 0.31
+ * (docs/balance/revision-2026-08.md): with the fitted line a single 70 % worker cost
+ * 22.75 $/h, which over a 325 h cycle exceeded the entire revenue a cycle could
+ * produce, and hiring a second worker could never pay for itself. The revised line
+ * prices the 70 % starting worker at 15.70 $/h, close to the 15 $/h GDD section 117
+ * assumes for the same worker.
  *
  * The intercept is negative, which is what makes low skill labour cheap and keeps the
  * "many cheap workers against few experts" trade off of GDD sections 65 and 103 alive.
  */
-export const SALARY_INTERCEPT = Money.fromString('-8.75');
-export const SALARY_PER_SKILL_POINT = Money.fromString('0.45');
+export const SALARY_INTERCEPT = Money.fromString('-6');
+export const SALARY_PER_SKILL_POINT = Money.fromString('0.31');
 
 /**
  * Half width of the multiplicative noise applied to the fitted salary, in basis points:

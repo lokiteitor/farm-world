@@ -130,16 +130,19 @@ export const CROP_CYCLE_TRANSITIONS: readonly CropCycleTransition[] = [
 ];
 
 /**
- * States in which the weed level grows with time (GDD section 78): while growing, while
- * ready and not harvested, and while virgin and unworked. It is settled lazily on every
- * state change, because it is continuous, nothing is triggered when it crosses a
- * threshold, and it is only consumed when the yield is computed (plan section 6.5).
+ * States in which the weed level grows with time. GDD section 78 lists growing, ready
+ * and not harvested, and virgin and unworked; the balance revision adopts the strict
+ * reading of finding H8 (docs/revision-formulas.md) and keeps only `GROWING`: during
+ * the plowing and harvesting tasks the field is being worked, which section 78 itself
+ * excludes, and the state-based settlement cannot tell a worked stretch from an idle
+ * one. Consequence, accepted and recorded in the balance report: a field left virgin
+ * or unharvested no longer accumulates weeds while idle.
+ *
+ * It is settled lazily on every state change, because it is continuous, nothing is
+ * triggered when it crosses a threshold, and it is only consumed when the yield is
+ * computed (plan section 6.5).
  */
-export const WEED_GROWTH_STATES: readonly CropCycleState[] = [
-  CropCycleState.GROWING,
-  CropCycleState.READY_TO_HARVEST,
-  CropCycleState.VIRGIN,
-];
+export const WEED_GROWTH_STATES: readonly CropCycleState[] = [CropCycleState.GROWING];
 
 /**
  * States in which fertility recovers with time. Only `VIRGIN`, which is fallow: GDD

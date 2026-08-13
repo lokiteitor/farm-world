@@ -387,6 +387,6 @@ describe('mantenimiento devengado (GDD §94)', () => {
       Money.mulGameMs(MACHINE_CATALOGUE.TRACTOR.maintenanceCostPerGameHour, disposed - acquired),
     );
     expect(Money.toString(charged)).toBe(Money.toString(expected));
-    expect(Money.toString(charged)).toBe(`-${12 * heldGameHours}.0000`);
+    expect(Money.toString(charged)).toBe(`-${6 * heldGameHours}.0000`);
   });
 });

@@ -222,8 +222,8 @@ describe('queryLedger', () => {
       fromGameMs: null,
       toGameMs: null,
     });
-    // Twelve sales of a hundred litres at 0.22.
-    expect(sales).toBe(Money.toString(Money.fromUnits(SALE_COUNT * 22)));
+    // Twelve sales of a hundred litres at 0.90.
+    expect(sales).toBe(Money.toString(Money.fromUnits(SALE_COUNT * 90)));
   });
 
   it('la suma de los asientos es el saldo almacenado', async () => {

@@ -2,11 +2,12 @@
 //
 // Owner: workflow W5-C. Tool `tools/balance`.
 //
-// This is the deliverable the plan asks for. The decision of the user is to implement the
-// balance of the GDD without touching it, so this table is not a list of defects to fix: it
-// is the record of what the published figures are worth once the catalogues of GDD sections
-// 82, 89, 115, 116, 117 and 133 are applied literally, so that a later balancing pass starts
-// from measured numbers instead of from the ones the document asserts.
+// This is the deliverable the plan asks for. Originally it recorded what the published
+// figures were worth with the catalogues of GDD sections 82, 89, 115, 116, 117 and 133
+// applied literally; since the balance revision of 2026-08 (docs/balance/revision-2026-08.md)
+// the catalogue departs from the GDD in the sale price, the machinery rates, the salary line
+// and the weed states, and each cause below says whether a mismatch is internal to the GDD or
+// introduced by the revision.
 //
 // A row is `reproducible` when the computed figure equals the published one within the
 // tolerance the row itself declares. The tolerances are not uniform on purpose: GDD section
@@ -143,13 +144,13 @@ export function deviations(
     published: '15 $/h en §117, 30 $/h en §36, 12-31 $/h en §102',
     computed: `${amount(
       Money.add(SALARY_INTERCEPT, Money.mulRatio(SALARY_PER_SKILL_POINT, 70)),
-    )} $/h para habilidad 70 % con la regla procedural de §102`,
+    )} $/h para habilidad 70 % con la recta salarial revisada`,
     reproducible: false,
     cause:
       'Las tres cifras del GDD son incompatibles entre si. La regla procedural de §102 es la ' +
-      'autoritativa (plan seccion 2.2) y produce el salario de la columna de la derecha; el ' +
-      `15 $/h de §117 corresponderia a una habilidad del ${decimal(skillForSalary(15))} % con ` +
-      'esa misma regla.',
+      'autoritativa; la revision de 2026-08 escalo su recta a la baja porque el ajuste original ' +
+      '(22,75 $/h para el 70 %) superaba todo el ingreso de un ciclo. Con la recta revisada el ' +
+      `15 $/h de §117 corresponderia a una habilidad del ${decimal(skillForSalary(15))} %.`,
   });
 
   // --- GDD section 118, the cycle and its holding cost ----------------------
@@ -207,10 +208,10 @@ export function deviations(
     computed: `${amount(catalogueMaintenancePerHour())} $/h`,
     reproducible: false,
     cause:
-      'NO reproducible. El catalogo de §89 solo asigna maintenanceCost al tractor (12) y a la ' +
-      'cosechadora (25); arado, sembradora y remolque no tienen ninguno. El plan implementa el ' +
-      'catalogo literalmente (seccion 2.2), de modo que el mantenimiento combinado es la suma ' +
-      'de esos dos y no la cifra de §118.',
+      'NO reproducible por dos motivos acumulados: el catalogo de §89 solo asigna ' +
+      'maintenanceCost al tractor y a la cosechadora (37 $/h combinados, no ~70), y la revision ' +
+      'de 2026-08 dejo esas dos tasas en la mitad (6 y 15 $/h), porque con las literales un ' +
+      'tractor consumia el 22 % de su precio de compra en un solo ciclo.',
   });
   rows.push({
     section: '§118',
@@ -229,10 +230,10 @@ export function deviations(
     )} $ sin operacion, ${amount(minimum.holding.total)} $ con ella`,
     reproducible: false,
     cause:
-      'NO reproducible, y por dos motivos que se compensan en parte. A la baja, el ' +
-      'mantenimiento del catalogo es la mitad del que §118 supone; al alza, §118 omite el ' +
-      `operatingCost de §89, que aqui son ${amount(minimum.holding.operating)} $ y que ` +
-      '§107 y §114 declaran aditivo al mantenimiento.',
+      'NO reproducible. A la baja, el mantenimiento del catalogo revisado es menos de un ' +
+      'tercio del que §118 supone; al alza, §118 omite el operatingCost, que aqui son ' +
+      `${amount(minimum.holding.operating)} $ y que §107 y §114 declaran aditivo al ` +
+      'mantenimiento.',
   });
 
   // --- GDD section 119, the revenue of the first harvest --------------------
@@ -252,24 +253,22 @@ export function deviations(
     published: 'aproximadamente 4.554 $',
     computed: `${amount(withPublishedWeeds.revenuePerCycle)} $`,
     reproducible: Money.compare(withPublishedWeeds.revenuePerCycle, Money.fromUnits(4_554)) === 0,
-    cause: `Reproducible exactamente con el precio de §82 (${amount(
-      WHEAT.sellPricePerLiter,
-    )} $/L).`,
+    cause:
+      'NO reproducible por el precio, no por los litros: los 20.700 L de §119 se reproducen, ' +
+      `pero el precio es el ${amount(WHEAT.sellPricePerLiter)} $/L de la revision de 2026-08 ` +
+      'y no el 0,22 de §82, descartado por inviable.',
   });
   rows.push({
     section: '§119 frente a §82',
     concept: 'Nivel de malezas acumulado al cosechar',
     published: 'aproximadamente 20 % en 325 h sin cultivar',
-    computed: `${bpToPercent(weeds.levelAtHarvestBp)} % (saturado; sin techo serian ${decimal(
-      weeds.unclampedLevelBp / 100,
-      1,
-    )} %)`,
+    computed: `${bpToPercent(weeds.levelAtHarvestBp)} %`,
     reproducible: false,
     cause:
-      `NO reproducible, y es el hallazgo principal del informe. La tasa de §82 es ` +
-      `${decimal(weeds.ratePerGameHourBp / 100)} %/h y las horas del ciclo en las que las ` +
-      `malezas crecen son ${decimal(weeds.growingGameHours, 1)} h, de modo que el nivel satura ` +
-      `en el 100 % a las ${decimal(weeds.saturationGameHours, 1)} h.`,
+      `NO reproducible. Con la tasa de §82 (${decimal(weeds.ratePerGameHourBp / 100)} %/h) y ` +
+      `la lectura H8 de la revision de 2026-08 las malezas crecen solo durante las ` +
+      `${decimal(weeds.growingGameHours, 1)} h de GROWING, en el orden del ~20 % que §119 ` +
+      'supone; con la lectura original acumulaban 246 h y saturaban el 100 %.',
   });
   rows.push({
     section: '§119 frente a §78 y §82',
@@ -278,8 +277,9 @@ export function deviations(
     computed: `${weeds.liters} L y ${amount(weeds.revenue)} $`,
     reproducible: false,
     cause:
-      `Consecuencia de la fila anterior: con el nivel saturado la penalizacion de §78 es la ` +
-      `maxima, ${decimal(weeds.penalty * 100, 0)} %, en lugar del 8 % que §119 supone.`,
+      `Consecuencia de la fila anterior y del precio revisado: la penalizacion de §78 es el ` +
+      `${decimal(weeds.penalty * 100, 1)} %, frente al 8 % que §119 supone, y el precio es ` +
+      `${amount(WHEAT.sellPricePerLiter)} $/L.`,
   });
 
   // --- GDD section 121, the break-even -------------------------------------
@@ -293,8 +293,9 @@ export function deviations(
         : `${decimal(minimum.breakEvenCycles)} ciclos`,
     reproducible: true,
     cause:
-      'El propio §121 declara que un denominador negativo significa que no hay equilibrio. Es ' +
-      `el caso: el margen por ciclo es ${amount(minimum.netPerCycle)} $.`,
+      'El propio §121 declara que un denominador negativo significa que no hay equilibrio. ' +
+      `Con la revision de 2026-08 el margen por ciclo es ${amount(minimum.netPerCycle)} $ y el ` +
+      'equilibrio existe; con el catalogo literal el margen era negativo y no existia.',
   });
 
   // --- GDD section 138, forestry -------------------------------------------

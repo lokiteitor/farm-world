@@ -134,18 +134,20 @@ describe('projectWeedLevel (GDD section 78)', () => {
         weedLevelBp: BP_ZERO,
         updatedAtGameMs: at(0),
         toGameMs: at(500),
-        cropCycleState: CropCycleState.READY_TO_HARVEST,
+        cropCycleState: CropCycleState.GROWING,
         crop: WHEAT,
       }),
     ).toBe(BP_ONE);
   });
 
-  it('does not move while the field is plowed, seeded or germinating', () => {
+  it('does not move outside GROWING, which is the strict reading of finding H8', () => {
     for (const state of [
+      CropCycleState.VIRGIN,
       CropCycleState.PLOWED,
       CropCycleState.CULTIVATED,
       CropCycleState.SEEDED,
       CropCycleState.GERMINATING,
+      CropCycleState.READY_TO_HARVEST,
       CropCycleState.HARVESTED,
     ]) {
       expect(
@@ -160,16 +162,18 @@ describe('projectWeedLevel (GDD section 78)', () => {
     }
   });
 
-  it('grows on virgin land, which is why plowing time already costs yield', () => {
+  it('does not grow on virgin land, so plowing time no longer costs yield (H8)', () => {
+    // Before the balance revision VIRGIN accumulated weeds and the 70 h plowing task
+    // alone added 42 %. Under the strict reading of finding H8 the level is untouched.
     expect(
       projectWeedLevel({
-        weedLevelBp: BP_ZERO,
+        weedLevelBp: bp(1_000),
         updatedAtGameMs: at(0),
         toGameMs: at(70.028),
         cropCycleState: CropCycleState.VIRGIN,
         crop: WHEAT,
       }),
-    ).toBe(4_201);
+    ).toBe(1_000);
   });
 
   it('truncates rather than rounding up, so a settlement never grants extra weed', () => {
@@ -223,13 +227,13 @@ describe('projectWeedLevelAcrossPhases (GDD section 78 sobre la linea de GDD 76)
     expect(sown(18)).toBe(0);
   });
 
-  it('acumula solo las horas de GROWING y de READY_TO_HARVEST', () => {
+  it('acumula solo las horas de GROWING, que es la lectura estricta de H8', () => {
     // 30 h: 18 sin crecimiento y 12 en `GROWING`, a 60 bp/h.
     expect(sown(30)).toBe(720);
     // 96 h: la frontera de `READY_TO_HARVEST`, 78 h de `GROWING`.
     expect(sown(96)).toBe(4_680);
-    // 120 h: 78 de `GROWING` mas 24 ya listo para cosechar.
-    expect(sown(120)).toBe(6_120);
+    // 120 h: las 24 h ya listo para cosechar no acumulan nada.
+    expect(sown(120)).toBe(4_680);
   });
 
   it('es aditiva por tramos, de modo que liquidar a mitad no cambia el resultado', () => {
@@ -258,7 +262,7 @@ describe('projectWeedLevelAcrossPhases (GDD section 78 sobre la linea de GDD 76)
         weedLevelBp: BP_ZERO,
         updatedAtGameMs: at(0),
         toGameMs: at(100),
-        cropCycleState: CropCycleState.VIRGIN,
+        cropCycleState: CropCycleState.GROWING,
         seededAtGameMs: null,
         crop: WHEAT,
       }),

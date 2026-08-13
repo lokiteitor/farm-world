@@ -2,23 +2,22 @@
 //
 // Owner: workflow W5-C. Tool `tools/balance`.
 //
-// This is the main finding of the report, and plan section 2.2 already anticipated it: GDD
-// section 82 gives `weedGrowthRate: 0.6 %/h`, GDD section 118 gives a cycle of about 325 game
-// hours, and GDD section 119 then assumes "about 20 % accumulated in 325 h without
-// cultivating". The three cannot all hold: 0.6 %/h over the hours in which weeds grow reaches
-// 100 % long before the harvest, and the penalty curve of GDD section 78 answers that with
-// its maximum, 50 %, not with the 8 % that GDD section 119 uses.
+// This was the main finding of the original report: GDD section 82 gives
+// `weedGrowthRate: 0.6 %/h`, GDD section 118 gives a cycle of about 325 game hours, and GDD
+// section 119 then assumes "about 20 % accumulated in 325 h without cultivating". With weeds
+// growing over the whole cycle the level saturated at 100 % and the penalty was the maximum
+// 50 %. The balance revision of 2026-08 (docs/balance/revision-2026-08.md) adopted the strict
+// reading of finding H8: only `GROWING` accumulates, so the level at harvest is now 46.8 %,
+// in the order of what GDD section 119 assumes.
 //
-// The decision of the user is to implement the catalogue literally and document the deviation
-// rather than retune it, so nothing here changes a constant. What it does is measure the
-// consequence exactly, and answer the one question a designer would ask next: whether the
-// optional `CULTIVATE` of GDD section 82, which plan section 2.2 promotes to a strategic
-// lever precisely because it resets the weeds, avoids the saturation. With the published rate
-// it does not, and the figures below say by how much.
+// Nothing here changes a constant. The module measures the consequence exactly, including
+// the question a designer would ask next: what the optional `CULTIVATE` of GDD section 82,
+// whose side effect is resetting the weeds, buys the player. Under the H8 reading the answer
+// is nothing for the harvest: `GROWING` always starts after sowing, so a reset before sowing
+// leaves the level at harvest untouched. The figures below make that measurable.
 //
-// The hours that count are not the hours of the cycle. Weeds grow while the field is virgin,
-// growing, or ready and not harvested (`WEED_GROWTH_STATES`), so the ploughing task and the
-// harvesting task accumulate weeds and the sown and germinating phases do not.
+// The hours that count come from `WEED_GROWTH_STATES`, so a change to that list moves every
+// figure of this module instead of leaving the report quoting an old reading.
 
 import { WHEAT, type CropDefinition } from '../../shared/config/crops.js';
 import { WEED_GROWTH_STATES, WEED_LEVEL_MAX_BP } from '../../shared/config/transitions.js';
@@ -71,9 +70,8 @@ export interface WeedAnalysis {
  * Measures the effect, with everything derived from the catalogue.
  *
  * Nothing here writes a constant back. `rateThatWouldReachPublishedLevelBp` is reported
- * because a balance report has to say what the lever would have to be worth, and it is
- * explicitly not applied: the decision of the plan is to implement GDD section 82 as
- * published and record the consequence.
+ * because a balance report has to say what the lever would have to be worth; the revision
+ * of 2026-08 kept the rate of GDD section 82 and corrected the accumulation states instead.
  */
 export function analyseWeeds(
   scenario: BalanceScenario,

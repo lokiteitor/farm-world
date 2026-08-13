@@ -119,12 +119,13 @@ describe('realBuildingCost (GDD sections 116 and 117)', () => {
 
 describe('sales (GDD sections 123 and 133)', () => {
   it('sells grain at the fixed price per litre', () => {
-    expect(cropSaleRevenue(WHEAT, 20_700)).toBe(Money.fromUnits(4_554));
-    expect(cropSaleRevenue(WHEAT, 1)).toBe(Money.fromString('0.22'));
+    // 0.90 per litre since the balance revision of 2026-08.
+    expect(cropSaleRevenue(WHEAT, 20_700)).toBe(Money.fromUnits(18_630));
+    expect(cropSaleRevenue(WHEAT, 1)).toBe(Money.fromString('0.90'));
     expect(cropSaleRevenue(WHEAT, 0)).toBe(Money.ZERO);
     expect(cropSaleRevenue(WHEAT, -100)).toBe(Money.ZERO);
     // The 24 500 L of the interface example of GDD section 49.
-    expect(cropSaleRevenue(WHEAT, 24_500)).toBe(Money.fromUnits(5_390));
+    expect(cropSaleRevenue(WHEAT, 24_500)).toBe(Money.fromUnits(22_050));
   });
 
   it('sells wood per cubic metre from a stock held in cubic decimetres', () => {
@@ -190,15 +191,15 @@ describe('resale and liquidation value (plan section 6.6)', () => {
       },
       { crop: WHEAT, species: PINE },
     );
-    // Stock: 10 000 L x 0.22 = 2 200.
-    expect(breakdown.inventory).toBe(Money.fromUnits(2_200));
+    // Stock: 10 000 L x 0.90 = 9 000.
+    expect(breakdown.inventory).toBe(Money.fromUnits(9_000));
     // Machines: 10 800 + 42 000 x 0.6 x 0.5 = 10 800 + 12 600 = 23 400.
     expect(breakdown.machines).toBe(Money.fromUnits(23_400));
     // Buildings: (8 000 + 10 000) x 0.6 = 10 800.
     expect(breakdown.buildings).toBe(Money.fromUnits(10_800));
     // Land: 50 x 120 x 0.6 = 3 600.
     expect(breakdown.land).toBe(Money.fromUnits(3_600));
-    expect(breakdown.total).toBe(Money.fromUnits(40_000));
+    expect(breakdown.total).toBe(Money.fromUnits(46_800));
   });
 
   it('falls back to the catalogue price for a machine with no recorded price', () => {

@@ -4,10 +4,11 @@
 //
 // GDD section 127 asks for sections 117 to 121 to be turned into a balance sheet outside the
 // GDD, "donde las formulas se ajusten interactivamente, para evitar descubrir problemas de
-// rentabilidad ya en produccion". This is that sheet, with one difference the plan is explicit
-// about: nothing is adjusted here. The decision recorded in plan section 1 is to implement the
-// balance of the GDD without touching it and to document the deviation, so the report is the
-// deliverable that records it and not a gate that has to be brought into the green.
+// rentabilidad ya en produccion". This is that sheet. The original implementation applied the
+// GDD literally and this report documented that the result was an order of magnitude short of
+// the GDD's own target; the balance revision of 2026-08 (docs/balance/revision-2026-08.md)
+// then adjusted the sale price, the machinery rates, the salary line and the weed states, and
+// the report now records the revised balance next to what the GDD publishes.
 //
 // Structure, and why each part is there:
 //
@@ -118,10 +119,13 @@ function sectionMethod(): string {
     'el rendimiento con la misma formula de GDD §83 que aplica la cosecha. Si se retoca una',
     'constante, este informe se mueve con ella.',
     '',
-    'La decision registrada en la seccion 1 del plan es implementar el balance del GDD sin',
-    'modificarlo y documentar la desviacion. Por tanto ninguna constante se ajusta aqui. Cuando el',
-    'informe cita el valor que una palanca deberia tener para que el ciclo cerrara en positivo, lo',
-    'hace a titulo informativo y se indica expresamente que no se aplica.',
+    'La implementacion original aplicaba el balance del GDD sin modificarlo, y este informe midio',
+    'que el resultado quedaba un orden de magnitud por debajo del objetivo del propio documento.',
+    'La revision de balance de 2026-08 (`docs/balance/revision-2026-08.md`) ajusto cuatro grupos de',
+    'constantes: el precio de venta del trigo, las tasas horarias de la maquinaria, la recta',
+    'salarial y los estados en los que crecen las malezas. El informe compara ahora el catalogo',
+    'revisado con lo que el GDD publica, y senala en cada desviacion si procede del GDD o de la',
+    'revision.',
     '',
     'El informe no lleva marca de tiempo. Dos ejecuciones sobre el mismo catalogo producen bytes',
     'identicos, de modo que la unica razon por la que este fichero cambia es que ha cambiado una',
@@ -285,9 +289,10 @@ function sectionHoldingCost(minimum: BalanceKpis, staggered: BalanceKpis): strin
     '### 4.2 Coste de posesion',
     '',
     'Aqui aparece la primera desviacion de fondo. GDD §118 supone unos 70 $/h de mantenimiento',
-    'combinado y el catalogo de GDD §89 no lo produce: solo el tractor (12 $/h) y la cosechadora',
-    '(25 $/h) declaran `maintenanceCost`, y los tres implementos no declaran ninguno. Ademas GDD',
-    '§118 omite el `operatingCost`, que GDD §107 y §114 declaran aditivo al mantenimiento.',
+    'combinado; ya el catalogo literal de GDD §89 producia solo 37 $/h (unicamente el tractor y la',
+    'cosechadora declaran `maintenanceCost`), y la revision de balance de 2026-08 dejo las tasas en',
+    'la mitad (tractor 6 $/h, cosechadora 15 $/h). Ademas GDD §118 omite el `operatingCost`, que',
+    'GDD §107 y §114 declaran aditivo al mantenimiento.',
     '',
     table(
       ['Concepto', 'GDD §118', 'Calculado', 'Nota'],
@@ -380,7 +385,7 @@ function sectionRevenue(minimum: BalanceKpis, published: BalanceKpis, weeds: Wee
       ],
     ),
     '',
-    `El precio de venta es el de GDD §82, ${money(WHEAT.sellPricePerLiter)} por litro, fijo y sin fluctuacion (GDD §123).`,
+    `El precio de venta es ${money(WHEAT.sellPricePerLiter)} por litro, fijo y sin fluctuacion (GDD §123). Es el precio de la revision de balance de 2026-08: el 0,22 $/L de GDD §82 hacia inviable cualquier ciclo y fue la constante que la revision senalo como mas desproporcionada.`,
   ].join('\n');
 }
 
@@ -391,7 +396,7 @@ function sectionDeviations(rows: readonly Deviation[]): string {
   return [
     '## 6. Valores del GDD que su propio catalogo no reproduce',
     '',
-    `De las ${rows.length} cifras publicadas que la calculadora comprueba, ${reproducible.length} se reproducen y ${notReproducible.length} no. Ninguna se ha ajustado: la columna "calculado" es lo que sale del catalogo tal y como esta implementado.`,
+    `De las ${rows.length} cifras publicadas que la calculadora comprueba, ${reproducible.length} se reproducen y ${notReproducible.length} no. La columna "calculado" es lo que sale del catalogo implementado, que desde la revision de 2026-08 se aparta deliberadamente del GDD en el precio de venta, las tasas de maquinaria, la recta salarial y los estados de malezas; la columna "causa" distingue las desviaciones internas del GDD de las introducidas por la revision.`,
     '',
     '### 6.1 No reproducibles',
     '',
@@ -425,7 +430,7 @@ function sectionWeeds(weeds: WeedAnalysis): string {
     '',
     'Es el hallazgo principal del informe y el que mas dinero mueve.',
     '',
-    `GDD §82 fija \`weedGrowthRate\` en ${decimal(weeds.ratePerGameHourBp / 100)} %/h. Las malezas crecen mientras el campo esta en uno de los estados de GDD §78 (${WEED_STATES_LABEL.join(', ')}), que en este ciclo suman ${hours(weeds.growingGameHours)} de las ${hours(weeds.cycleGameHours)} totales: cuentan la tarea de arado y la de cosecha, y no cuentan las fases de sembrado y germinacion.`,
+    `GDD §82 fija \`weedGrowthRate\` en ${decimal(weeds.ratePerGameHourBp / 100)} %/h. Desde la revision de 2026-08 las malezas crecen solo en los estados ${WEED_STATES_LABEL.join(', ')} (lectura estricta del hallazgo H8), que en este ciclo suman ${hours(weeds.growingGameHours)} de las ${hours(weeds.cycleGameHours)} totales: las tareas de arado y cosecha, durante las que el campo esta siendo trabajado, quedan excluidas, igual que las fases de sembrado y germinacion.`,
     '',
     table(
       ['Magnitud', 'Valor'],
@@ -445,27 +450,27 @@ function sectionWeeds(weeds: WeedAnalysis): string {
       ],
     ),
     '',
-    '### 7.1 CULTIVATE no evita la saturacion con la tasa publicada',
+    '### 7.1 CULTIVATE no cambia el ingreso del ciclo',
     '',
-    'La seccion 2.2 del plan preveia que la consecuencia de implementar la tasa literal fuera dar',
-    'a `CULTIVATE`, que GDD §82 declara opcional para el trigo, un uso estrategico real: resetear',
-    'las malezas antes de sembrar. La calculadora mide ese supuesto y no se sostiene con estas',
-    'constantes.',
+    'La seccion 2.2 del plan preveia que `CULTIVATE`, que GDD §82 declara opcional para el trigo,',
+    'tuviera un uso estrategico real: resetear las malezas antes de sembrar. La calculadora mide',
+    'ese supuesto y, bajo la lectura H8 de la revision de 2026-08, no se sostiene.',
     '',
-    `Aunque el jugador cultive justo antes de sembrar, quedan ${hours(weeds.growingGameHoursAfterSowing)} de crecimiento de malezas hasta la cosecha —la fase \`GROWING\` mas la propia tarea de cosecha—, que a ${decimal(weeds.ratePerGameHourBp / 100)} %/h llevan el nivel a ${percentFromBp(weeds.levelAfterCultivateBp)}. ${
-      weeds.cultivateAvoidsSaturation
-        ? 'El nivel queda por debajo del techo, de modo que cultivar si reduce la penalizacion.'
-        : 'El nivel vuelve a saturar, de modo que la penalizacion final sigue siendo la maxima y ' +
-          'cultivar no cambia el ingreso del ciclo: solo adelanta el instante en que el campo ' +
-          'vuelve a estar limpio.'
+    `Aunque el jugador cultive justo antes de sembrar, quedan ${hours(weeds.growingGameHoursAfterSowing)} de crecimiento de malezas hasta la cosecha, que a ${decimal(weeds.ratePerGameHourBp / 100)} %/h llevan el nivel a ${percentFromBp(weeds.levelAfterCultivateBp)}. ${
+      weeds.levelAfterCultivateBp === weeds.levelAtHarvestBp
+        ? 'Es exactamente el mismo nivel que sin cultivar: toda la acumulacion es posterior a la ' +
+          'siembra, de modo que el reseteo no toca el ingreso del ciclo. Devolver a las malezas ' +
+          'un papel de decision queda registrado como asunto abierto de la revision.'
+        : 'Cultivar reduce el nivel al cosechar en ' +
+          `${decimal((weeds.levelAtHarvestBp - weeds.levelAfterCultivateBp) / 100)} puntos.`
     }`,
     '',
     '### 7.2 Que valor tendria que tener la tasa',
     '',
     `Para que el nivel de malezas al cosechar fuera el 20 % que GDD §119 supone, la tasa tendria que ser ${decimal(weeds.rateThatWouldReachPublishedLevelBp / 100, 4)} %/h en lugar de ${decimal(weeds.ratePerGameHourBp / 100)} %/h, es decir unas ${decimal(weeds.ratePerGameHourBp / weeds.rateThatWouldReachPublishedLevelBp)} veces menos.`,
     '',
-    'Se deja constancia y **no se aplica**: la decision del usuario es implementar el catalogo del',
-    'GDD sin tocarlo.',
+    'Se deja constancia y no se aplica: la revision de 2026-08 mantuvo la tasa de GDD §82 y',
+    'corrigio los estados de acumulacion, que era la desviacion de mas peso.',
   ].join('\n');
 }
 
@@ -481,8 +486,10 @@ function sectionBreakEven(minimum: BalanceKpis, staggered: BalanceKpis): string 
     '```',
     '',
     'GDD §121 declara que un denominador negativo significa que no hay equilibrio y que la granja',
-    'quiebra, y anade que es el KPI principal a vigilar. Con las constantes sin ajustar es',
-    'exactamente el caso.',
+    'quiebra, y anade que es el KPI principal a vigilar. Con el catalogo literal era exactamente el',
+    'caso; con la revision de 2026-08 el margen es positivo en los dos escenarios: ajustado en la',
+    'compra completa, que es el episodio de deuda de caja buscado por diseno, y claro en la compra',
+    'escalonada, que es la estrategia que GDD §120 recomienda.',
     '',
     table(
       ['Escenario', 'Ingreso por ciclo', 'Coste por ciclo', 'Margen', 'Ciclos hasta equilibrio'],
@@ -504,8 +511,9 @@ function sectionBreakEven(minimum: BalanceKpis, staggered: BalanceKpis): string 
       ],
     ),
     '',
-    'Magnitud de cada palanca de GDD §120, sobre el escenario de compra completa. Son cifras',
-    'informativas: **ninguna se aplica**.',
+    'Magnitud de cada palanca de GDD §120 respecto del punto de equilibrio del ciclo, sobre el',
+    'escenario de compra completa. Son cifras informativas que situan el margen actual; ninguna se',
+    'aplica sobre el catalogo.',
     '',
     table(
       ['Palanca', 'Que haria falta'],
@@ -524,7 +532,7 @@ function sectionBreakEven(minimum: BalanceKpis, staggered: BalanceKpis): string 
         [
           'B1. Subir el precio de venta',
           `De ${money(WHEAT.sellPricePerLiter)}/L a ${money(priceNeeded)}/L con el rendimiento ` +
-            'saturado por malezas.',
+            'efectivo del ciclo.',
         ],
         [
           'B2. Subir el rendimiento',
@@ -549,9 +557,10 @@ function sectionConsequences(): string {
   return [
     '## 9. Consecuencias ya implementadas',
     '',
-    'El deficit del primer ciclo no es un descuido del calculo: es el estado esperado con estas',
-    'constantes, y por eso esta en el camino critico del diseno. Lo que el juego hace con el esta',
-    'implementado y probado, no pendiente:',
+    'Tras la revision de 2026-08 el deficit ya no es el estado permanente del ciclo, pero el paso',
+    'por deuda sigue siendo parte del diseno: quien compra toda la flota el dia uno devenga mas que',
+    'el colchon de capital antes de vender la cosecha y atraviesa `IN_DEBT` durante la cosecha. Lo',
+    'que el juego hace con el saldo negativo esta implementado y probado, no pendiente:',
     '',
     `- **Saldo negativo permitido.** El devengo continuo puede llevar el saldo por debajo de cero`,
     '  sin ninguna restriccion de base de datos que lo impida, porque impedirlo rechazaria el',
@@ -559,8 +568,8 @@ function sectionConsequences(): string {
     '- **`IN_DEBT` derivado.** Bloquea el gasto discrecional y no bloquea vender ni asignar tareas,',
     '  que son la unica via de ingreso. Bloquearlas produciria un bloqueo permanente.',
     `- **Interes de descubierto** como cuarto tipo de devengo, con tasa ${percentFromBp(OVERDRAFT_INTEREST_BP_PER_GAME_HOUR)} por hora de juego. Existe para ser una`,
-    '  palanca disponible sin migracion; cobrarlo hoy solo profundizaria un deficit que el propio',
-    '  GDD documenta.',
+    '  palanca disponible sin migracion; con el episodio de deuda de caja del primer ciclo como',
+    '  parte del diseno, cobrarlo es una decision de balance pendiente y no un valor olvidado.',
     `- **Liquidacion forzosa** por encima del ${percentFromBp(LIQUIDATION_DEBT_THRESHOLD_BP)} del valor liquidable, en el orden publicado (${LIQUIDATION_STEPS.join(', ')}), con un asiento por activo vendido para que el resumen de`,
     '  regreso pueda explicar que se vendio y por que. La dispara el barrido periodico y no el',
     '  login, de modo que nunca aparece como castigo retroactivo por haber estado ausente.',

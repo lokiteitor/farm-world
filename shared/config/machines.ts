@@ -2,13 +2,18 @@
 //
 // Owner: workflow W2 (vocabulary).
 //
-// The catalogue is the literal one of GDD section 89 for agriculture and GDD section
-// 134 for forestry. Two consequences of taking it literally, both documented in the
-// balance report rather than tuned away (plan section 2.2):
+// Purchase prices and speeds are the literal ones of GDD section 89 for agriculture
+// and GDD section 134 for forestry. The hourly running costs are NOT literal any more:
+// the balance revision of 2026-08 (docs/balance/revision-2026-08.md) halved the
+// maintenance and operating rates of the powered machines, because with the literal
+// figures a tractor consumed 22 % of its own purchase price in maintenance over a
+// single 325 h cycle and the first cycle could not approach profitability under any
+// reading of the GDD (docs/balance/informe-para-revision.md).
+//
+// Two structural readings kept from the original implementation:
 //
 //   - Implements carry no `maintenanceCost` and no `operatingCost` in GDD section 89,
-//     so both are zero here. GDD section 118 assumes about 70 $/h of combined
-//     maintenance while this catalogue yields 37 $/h.
+//     so both are zero here.
 //   - `maintenanceCost` and `operatingCost` are additive, not exclusive: GDD sections
 //     107 and 114 are explicit that possession is always paid and operation is paid on
 //     top while the machine works.
@@ -110,8 +115,8 @@ export const MACHINE_CATALOGUE: Readonly<Record<MachineType, MachineDefinition>>
     type: MachineType.TRACTOR,
     role: MachineRole.POWERED,
     purchasePrice: Money.fromUnits(18_000),
-    maintenanceCostPerGameHour: Money.fromUnits(12),
-    operatingCostPerGameHour: Money.fromUnits(22),
+    maintenanceCostPerGameHour: Money.fromUnits(6),
+    operatingCostPerGameHour: Money.fromUnits(10),
     workSpeedUnitsPerGameHour: null,
     workUnit: null,
     workWidthM: null,
@@ -175,8 +180,8 @@ export const MACHINE_CATALOGUE: Readonly<Record<MachineType, MachineDefinition>>
     type: MachineType.HARVESTER,
     role: MachineRole.POWERED,
     purchasePrice: Money.fromUnits(42_000),
-    maintenanceCostPerGameHour: Money.fromUnits(25),
-    operatingCostPerGameHour: Money.fromUnits(60),
+    maintenanceCostPerGameHour: Money.fromUnits(15),
+    operatingCostPerGameHour: Money.fromUnits(30),
     workSpeedUnitsPerGameHour: 3.0,
     workUnit: 'CELLS',
     workWidthM: 6,
@@ -212,8 +217,8 @@ export const MACHINE_CATALOGUE: Readonly<Record<MachineType, MachineDefinition>>
     type: MachineType.HARVESTER_FORESTRY,
     role: MachineRole.POWERED,
     purchasePrice: Money.fromUnits(65_000),
-    maintenanceCostPerGameHour: Money.fromUnits(30),
-    operatingCostPerGameHour: Money.fromUnits(70),
+    maintenanceCostPerGameHour: Money.fromUnits(15),
+    operatingCostPerGameHour: Money.fromUnits(35),
     workSpeedUnitsPerGameHour: 0.8,
     workUnit: 'TREES',
     workWidthM: null,

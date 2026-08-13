@@ -98,25 +98,34 @@ function analyticWeedBp(fromBp: number, gameHours: number): number {
 }
 
 describe('el nivel de malezas (GDD 78)', () => {
-  it('acumula exactamente la formula analitica sobre suelo virgen', () => {
+  it('acumula exactamente la formula analitica sobre un campo en crecimiento', () => {
+    const growing = (overrides: Partial<FieldAttributes> = {}): FieldAttributes =>
+      field({ cropCycleState: CropCycleState.GROWING, ...overrides });
     for (const hours of [1, 10, 100, 166]) {
-      expect(settleWeedLevel(field(), at(hours))).toBe(analyticWeedBp(0, hours));
+      expect(settleWeedLevel(growing(), at(hours))).toBe(analyticWeedBp(0, hours));
     }
     // 0,6 %/h son 60 puntos base por hora de juego: cien horas son el 6 %.
-    expect(settleWeedLevel(field(), at(100))).toBe(6_000);
+    expect(settleWeedLevel(growing(), at(100))).toBe(6_000);
   });
 
   it('satura en el 100 % y no lo rebasa', () => {
-    expect(settleWeedLevel(field(), at(1_000))).toBe(10_000);
-    expect(settleWeedLevel(field({ weedLevelBp: bp(9_990) }), at(10))).toBe(10_000);
+    const growing = (overrides: Partial<FieldAttributes> = {}): FieldAttributes =>
+      field({ cropCycleState: CropCycleState.GROWING, ...overrides });
+    expect(settleWeedLevel(growing(), at(1_000))).toBe(10_000);
+    expect(settleWeedLevel(growing({ weedLevelBp: bp(9_990) }), at(10))).toBe(10_000);
   });
 
-  it('no crece en los estados que la seccion 78 no enumera', () => {
+  it('no crece fuera de GROWING, que es la lectura estricta del hallazgo H8', () => {
+    // La revision de balance de 2026-08 excluye VIRGIN y READY_TO_HARVEST: durante el
+    // arado y la cosecha el campo esta siendo trabajado, y la liquidacion por estados
+    // no distingue un tramo trabajado de uno ocioso (docs/balance/revision-2026-08.md).
     for (const state of [
+      CropCycleState.VIRGIN,
       CropCycleState.PLOWED,
       CropCycleState.CULTIVATED,
       CropCycleState.SEEDED,
       CropCycleState.GERMINATING,
+      CropCycleState.READY_TO_HARVEST,
       CropCycleState.HARVESTED,
     ]) {
       expect(settleWeedLevel(field({ cropCycleState: state }), at(200))).toBe(0);
@@ -131,8 +140,8 @@ describe('el nivel de malezas (GDD 78)', () => {
     expect(settleWeedLevel(sown, at(30))).toBe(analyticWeedBp(0, 12));
     // El ciclo cronometrado termina en la hora 96, con 78 h de GROWING.
     expect(settleWeedLevel(sown, at(96))).toBe(analyticWeedBp(0, 78));
-    // READY_TO_HARVEST sigue acumulando (GDD 78: "sin cosechar").
-    expect(settleWeedLevel(sown, at(120))).toBe(analyticWeedBp(0, 78 + 24));
+    // READY_TO_HARVEST ya no acumula bajo la lectura estricta de H8.
+    expect(settleWeedLevel(sown, at(120))).toBe(analyticWeedBp(0, 78));
   });
 
   it('produce los segmentos de fase que el corte usa', () => {

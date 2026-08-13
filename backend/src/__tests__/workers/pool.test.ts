@@ -131,19 +131,21 @@ describe('el salario pedido (GDD 102)', () => {
     expect(pearson(xs, ys)).toBeGreaterThan(0.95);
   });
 
-  it('puede producir los tres ejemplos publicados por GDD 102', () => {
-    // Skill 45 % asking 12, skill 62 % asking 18, skill 88 % asking 31. The fit is the least
-    // squares line of these three, so each has to be inside its own noise band; if it were
-    // not, the coefficients of `shared/config/workers.ts` would be describing another game.
-    const published: readonly [number, number][] = [
-      [4_500, 12],
-      [6_200, 18],
-      [8_800, 31],
+  it('ancla la recta salarial revisada del balance de 2026-08', () => {
+    // La recta original era el ajuste de los tres ejemplos de GDD 102 (12, 18 y 31 $/h).
+    // La revision de balance la escalo a la baja (docs/balance/revision-2026-08.md):
+    // con la recta ajustada un solo trabajador del 70 % costaba 22,75 $/h, mas que todo
+    // el ingreso que un ciclo podia producir. La recta revisada (-6 + 0,31 x habilidad)
+    // situa al trabajador inicial del 70 % en 15,70 $/h, proximo al 15 $/h que GDD 117
+    // le atribuia.
+    const anchors: readonly [number, number][] = [
+      [4_500, 7.95],
+      [6_200, 13.22],
+      [7_000, 15.7],
+      [8_800, 21.28],
     ];
-    for (const [skillBp, asked] of published) {
-      const fitted = amount(fittedSalary(skillBp as Bp));
-      expect(asked).toBeGreaterThanOrEqual(fitted * (1 - halfWidth));
-      expect(asked).toBeLessThanOrEqual(fitted * (1 + halfWidth));
+    for (const [skillBp, expected] of anchors) {
+      expect(amount(fittedSalary(skillBp as Bp))).toBeCloseTo(expected, 10);
     }
   });
 

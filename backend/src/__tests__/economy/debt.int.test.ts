@@ -133,9 +133,9 @@ describe('la politica de deuda', () => {
 
     expect(statusCode, JSON.stringify(body)).toBe(200);
     const result = body['result'] as Record<string, unknown>;
-    // 10 000 L at 0.22 is 2 200, which takes the balance from -1 000 to 1 200.
-    expect(result['revenue']).toBe(Money.toString(Money.fromUnits(2_200)));
-    expect(result['balanceAfter']).toBe(Money.toString(Money.fromUnits(1_200)));
+    // 10 000 L at 0.90 is 9 000, which takes the balance from -1 000 to 8 000.
+    expect(result['revenue']).toBe(Money.toString(Money.fromUnits(9_000)));
+    expect(result['balanceAfter']).toBe(Money.toString(Money.fromUnits(8_000)));
 
     // And the status follows the balance back out of debt on the same advance.
     const { body: me } = await getJson(harness, player.accessToken, '/api/auth/me');

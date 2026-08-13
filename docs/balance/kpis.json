@@ -5,16 +5,16 @@
       "title": "Setup minimo viable, compra completa el dia uno",
       "kpis": {
         "minimumSetupCost": "146100.0000",
-        "holdingCostPerCycle": "25688.7786",
-        "revenuePerCycle": "2475.0000",
-        "revenueToCostRatio": 0.09634556934520819,
-        "gameHoursToFirstBreakEven": null,
+        "holdingCostPerCycle": "16194.2435",
+        "revenuePerCycle": "16459.2000",
+        "revenueToCostRatio": 1.0163611532702963,
+        "gameHoursToFirstBreakEven": 179397.1000186538,
         "capitalCushionAfterSetup": "13900.0000",
         "cycleGameHours": 325.3417366946779,
-        "netPerCycle": "-23213.7786",
-        "breakEvenCycles": null,
-        "weedLevelAtHarvestBp": 10000,
-        "weedGrowingGameHours": 246.06722689075633,
+        "netPerCycle": "264.9565",
+        "breakEvenCycles": 551.411269397052,
+        "weedLevelAtHarvestBp": 4680,
+        "weedGrowingGameHours": 78,
         "setup": {
           "landCells": 330,
           "land": "39600.0000",
@@ -23,19 +23,19 @@
           "total": "146100.0000"
         },
         "holding": {
-          "wages": "4880.1260",
-          "maintenance": "12037.6442",
-          "operating": "8771.0084",
+          "wages": "5107.8653",
+          "maintenance": "6832.1765",
+          "operating": "4254.2017",
           "interest": "0.0000",
-          "total": "25688.7786",
+          "total": "16194.2435",
           "windowGameHours": 325.3417363888889
         },
         "yield": {
           "baseLiters": 22500,
           "fertilityMultiplier": 1,
           "fertilizationMultiplier": 1,
-          "weedPenalty": 0.5,
-          "liters": 11250
+          "weedPenalty": 0.1872,
+          "liters": 18288
         },
         "phases": [
           {
@@ -90,16 +90,16 @@
       "title": "Setup minimo viable, compra escalonada",
       "kpis": {
         "minimumSetupCost": "146100.0000",
-        "holdingCostPerCycle": "20006.2156",
-        "revenuePerCycle": "2475.0000",
-        "revenueToCostRatio": 0.12371155292358241,
-        "gameHoursToFirstBreakEven": null,
+        "holdingCostPerCycle": "12784.7057",
+        "revenuePerCycle": "16459.2000",
+        "revenueToCostRatio": 1.2874132878944566,
+        "gameHoursToFirstBreakEven": 12935.773973330815,
         "capitalCushionAfterSetup": "13900.0000",
         "cycleGameHours": 325.3417366946779,
-        "netPerCycle": "-17531.2156",
-        "breakEvenCycles": null,
-        "weedLevelAtHarvestBp": 10000,
-        "weedGrowingGameHours": 246.06722689075633,
+        "netPerCycle": "3674.4943",
+        "breakEvenCycles": 39.76057331208814,
+        "weedLevelAtHarvestBp": 4680,
+        "weedGrowingGameHours": 78,
         "setup": {
           "landCells": 330,
           "land": "39600.0000",
@@ -108,19 +108,19 @@
           "total": "146100.0000"
         },
         "holding": {
-          "wages": "4880.1260",
-          "maintenance": "6355.0812",
-          "operating": "8771.0084",
+          "wages": "5107.8653",
+          "maintenance": "3422.6387",
+          "operating": "4254.2017",
           "interest": "0.0000",
-          "total": "20006.2156",
+          "total": "12784.7057",
           "windowGameHours": 325.3417363888889
         },
         "yield": {
           "baseLiters": 22500,
           "fertilityMultiplier": 1,
           "fertilizationMultiplier": 1,
-          "weedPenalty": 0.5,
-          "liters": 11250
+          "weedPenalty": 0.1872,
+          "liters": 18288
         },
         "phases": [
           {
@@ -175,16 +175,16 @@
       "title": "Primer ciclo con la hipotesis de malezas de GDD §119",
       "kpis": {
         "minimumSetupCost": "146100.0000",
-        "holdingCostPerCycle": "25688.7786",
-        "revenuePerCycle": "4554.0000",
-        "revenueToCostRatio": 0.17727584759518306,
-        "gameHoursToFirstBreakEven": null,
+        "holdingCostPerCycle": "16194.2435",
+        "revenuePerCycle": "18630.0000",
+        "revenueToCostRatio": 1.150408785689804,
+        "gameHoursToFirstBreakEven": 19514.44150147703,
         "capitalCushionAfterSetup": "13900.0000",
         "cycleGameHours": 325.3417366946779,
-        "netPerCycle": "-21134.7786",
-        "breakEvenCycles": null,
+        "netPerCycle": "2435.7565",
+        "breakEvenCycles": 59.9813651323521,
         "weedLevelAtHarvestBp": 2000,
-        "weedGrowingGameHours": 246.06722689075633,
+        "weedGrowingGameHours": 78,
         "setup": {
           "landCells": 330,
           "land": "39600.0000",
@@ -193,11 +193,11 @@
           "total": "146100.0000"
         },
         "holding": {
-          "wages": "4880.1260",
-          "maintenance": "12037.6442",
-          "operating": "8771.0084",
+          "wages": "5107.8653",
+          "maintenance": "6832.1765",
+          "operating": "4254.2017",
           "interest": "0.0000",
-          "total": "25688.7786",
+          "total": "16194.2435",
           "windowGameHours": 325.3417363888889
         },
         "yield": {
@@ -259,20 +259,20 @@
   },
   "weeds": {
     "ratePerGameHourBp": 60,
-    "growingGameHours": 246.06722689075633,
+    "growingGameHours": 78,
     "saturationGameHours": 166.66666666666666,
-    "unclampedLevelBp": 14764.03361344538,
-    "levelAtHarvestBp": 10000,
-    "penalty": 0.5,
-    "liters": 11250,
-    "revenue": "2475.0000",
+    "unclampedLevelBp": 4680,
+    "levelAtHarvestBp": 4680,
+    "penalty": 0.1872,
+    "liters": 18288,
+    "revenue": "16459.2000",
     "publishedLevelBp": 2000,
     "publishedLiters": 20700,
-    "publishedRevenue": "4554.0000",
-    "litersLost": 9450,
-    "revenueLost": "2079.0000",
-    "growingGameHoursAfterSowing": 176.03921568627453,
-    "levelAfterCultivateBp": 10000,
-    "cultivateAvoidsSaturation": false
+    "publishedRevenue": "18630.0000",
+    "litersLost": 2412,
+    "revenueLost": "2170.8000",
+    "growingGameHoursAfterSowing": 78,
+    "levelAfterCultivateBp": 4680,
+    "cultivateAvoidsSaturation": true
   }
 }

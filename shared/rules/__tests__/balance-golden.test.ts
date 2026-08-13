@@ -11,14 +11,17 @@ import { estimateTaskDuration } from '../duration.js';
 import { expectedNaturalForestVolumeDm3 } from '../forestry.js';
 import { cropSaleRevenue, landPurchasePrice, woodSaleRevenue } from '../pricing.js';
 
-// Golden balance test: the published figures of GDD sections 117, 118, 119 and 138
-// recomputed from the catalogue, with every deviation asserted at its real value.
+// Golden balance test: the figures of the revised balance recomputed from the
+// catalogue, with every deviation from the GDD asserted at its real value.
 //
-// The rule of plan section 2.2 applies throughout: the catalogue constants are
-// authoritative and are implemented literally, and the derived figures that do not
-// reproduce are documented as deviations rather than adjusted. This test is therefore
-// not a gate to be turned green by tuning: it is the executable record of which numbers
-// of the GDD come out of the GDD's own catalogue and which do not.
+// Two regimes meet here. The structural figures (setup cost, durations, forestry
+// volumes) still reproduce GDD sections 117, 118 and 138 literally. The economic
+// rates (sale price, running costs, salaries, weed accumulation) follow the balance
+// revision of 2026-08 (docs/balance/revision-2026-08.md), which replaced the literal
+// GDD values after docs/balance/informe-para-revision.md showed they left the first
+// cycle an order of magnitude short of the GDD's own target. This test is the
+// executable record of the revised balance: a change in any constant moves a figure
+// here and must be deliberate.
 
 const SCENARIO = MINIMUM_SETUP_SCENARIO;
 
@@ -80,139 +83,131 @@ describe('GDD section 118, cost of sustaining the first cycle', () => {
     expect(Math.round(kpis.cycleGameHours)).toBe(325);
   });
 
-  it('deviation: the combined maintenance rate is 37 per hour and not about 70', () => {
-    // GDD section 118 assumes "~$70/h combined" maintenance. The catalogue of GDD
-    // section 89 gives maintenance only to the tractor (12) and the combine (25); the
-    // implements declare none, so the real rate is 37. Taken literally, as plan section
-    // 2.2 requires; nothing is tuned.
+  it('the combined maintenance rate is 21 per hour after the revision', () => {
+    // Only the tractor (6) and the combine (15) carry maintenance; the implements
+    // declare none, as in the catalogue of GDD section 89. The rates are half the
+    // literal GDD figures, per the balance revision of 2026-08.
     const combined = Money.sum(
       SCENARIO.machines.map((type) => MACHINE_CATALOGUE[type].maintenanceCostPerGameHour),
     );
-    expect(combined).toBe(Money.fromUnits(37));
-    // 37 x 325.3417 = 12 037.6442, against the 22 750 of GDD section 118.
-    expect(kpis.holding.maintenance).toBe(Money.fromString('12037.6442'));
+    expect(combined).toBe(Money.fromUnits(21));
+    // 21 x 325.3417 h of cycle.
+    expect(kpis.holding.maintenance).toBe(Money.fromString('6832.1765'));
   });
 
-  it('deviation: the wage of 15 per hour is not reproducible from the pool rule of GDD 102', () => {
-    // The scenario uses the 15 $/h that GDD sections 117 and 118 state. The procedural
-    // rule of GDD section 102, fitted in shared/config/workers, gives 22.75 $/h for the
-    // 70 % skill that the durations of GDD section 118 imply and 18.25 $/h for the
-    // "~60 %" that GDD section 117 mentions for the same worker. The three figures
-    // cannot all hold; the catalogue keeps the procedural rule and the balance report
-    // records the other two as not reproducible.
-    expect(SCENARIO.workers[0]?.salaryPerGameHour).toBe(Money.fromUnits(15));
-    // 15 x 325.3417 = 4 880.1260, against the 4 875 of GDD section 118, which multiplies
-    // by the rounded 325 h.
-    expect(kpis.holding.wages).toBe(Money.fromString('4880.1260'));
+  it('uses the wage the pool rule of GDD 102 actually produces for the 70 % worker', () => {
+    // The 15 $/h of GDD section 117 was inconsistent with the procedural rule of GDD
+    // section 102. The revised salary line (-6 + 0.31 x skill) prices the 70 % starting
+    // worker at 15.70 $/h, and the scenario uses that value so the KPIs measure what
+    // the player actually pays.
+    expect(SCENARIO.workers[0]?.salaryPerGameHour).toBe(Money.fromString('15.70'));
+    expect(kpis.holding.wages).toBe(Money.fromString('5107.8653'));
   });
 
-  it('deviation: GDD 118 omits the operating cost, which is 8 771 over the cycle', () => {
+  it('includes the operating cost that GDD 118 omitted', () => {
     // GDD sections 94, 107 and 114 are explicit that operation is paid on top of
-    // possession while a machine works. GDD section 118 counts only salary and
-    // maintenance, so its total is missing this category entirely.
-    expect(kpis.holding.operating).toBe(Money.fromString('8771.0084'));
+    // possession while a machine works. With the revised rates (tractor 10, combine 30)
+    // it is 4 254.20 over the cycle.
+    expect(kpis.holding.operating).toBe(Money.fromString('4254.2017'));
   });
 
-  it('the real holding cost per cycle is 25 688.78, against the 27 625 published', () => {
-    expect(kpis.holding.total).toBe(Money.fromString('25688.7786'));
-    // The two errors nearly cancel: the maintenance the catalogue does not support is
-    // about 10 712 too high in the GDD, and the operating cost it forgets is about
-    // 8 771, so the published total is only about 7 % above the real one.
-    const published = Money.fromUnits(27_625);
-    const gap = Money.sub(published, kpis.holding.total);
-    expect(gap).toBe(Money.fromString('1936.2214'));
+  it('the holding cost per cycle is 16 194.24 after the revision', () => {
+    expect(kpis.holding.total).toBe(Money.fromString('16194.2435'));
   });
 
-  it('confirms that the holding cost exceeds the cushion, as GDD 118 intends', () => {
+  it('confirms that the holding cost exceeds the cushion, which is the debt dip by design', () => {
+    // Deliberate in the revision: the player who buys the whole fleet on day one
+    // accrues more than the 13 900 cushion before the harvest is sold, passes through
+    // IN_DEBT during the harvest, and the sale rescues the balance. The staggered
+    // purchase of GDD section 120 avoids the dip entirely.
     expect(Money.compare(kpis.holding.total, kpis.capitalCushionAfterSetup)).toBe(1);
   });
 });
 
 describe('GDD section 119, revenue of the first harvest', () => {
-  it('reproduces 20 700 L and 4 554 exactly under the weed level the GDD assumes', () => {
+  it('reproduces the 20 700 L of the GDD under the weed level it assumes', () => {
     const withGddWeeds = balanceKpis({ ...SCENARIO, weedLevelAtHarvestBp: bp(2000) });
-    // 250 x 90 x 1.0 x (1 - 0.08) = 20 700 L.
+    // 250 x 90 x 1.0 x (1 - 0.08) = 20 700 L, exactly as GDD section 119 computes.
+    // The revenue departs from its 4 554 because the sale price is 0.90 since the
+    // balance revision, not the published 0.22.
     expect(withGddWeeds.yield.baseLiters).toBe(22_500);
     expect(withGddWeeds.yield.weedPenalty).toBeCloseTo(0.08, 12);
     expect(withGddWeeds.yield.liters).toBe(20_700);
-    // 20 700 x 0.22 = 4 554.
-    expect(withGddWeeds.revenuePerCycle).toBe(Money.fromUnits(4_554));
-    expect(cropSaleRevenue(WHEAT, 20_700)).toBe(Money.fromUnits(4_554));
+    expect(withGddWeeds.revenuePerCycle).toBe(Money.fromUnits(18_630));
+    expect(cropSaleRevenue(WHEAT, 20_700)).toBe(Money.fromUnits(18_630));
   });
 
-  it('deviation: the published weed rate saturates the level, so the penalty is 50 % and not 8 %', () => {
+  it('accumulates weeds only during GROWING, the strict reading of finding H8', () => {
     const kpis = balanceKpis(SCENARIO);
-    // Weeds grow while the field is virgin, growing, or ready and not harvested (GDD
-    // section 78), which over this cycle is 70.03 + 78 + 98.04 = 246.07 game hours. At
-    // the 0.6 %/h of GDD section 82 that is 147.6 %, so the level saturates at 100 %
-    // and the penalty is the maximum of GDD section 78.
-    expect(kpis.weedGrowingGameHours).toBeCloseTo(246.0672, 4);
-    expect(kpis.weedLevelAtHarvestBp).toBe(10_000);
-    expect(kpis.yield.weedPenalty).toBe(0.5);
-    expect(kpis.yield.liters).toBe(11_250);
-    expect(kpis.revenuePerCycle).toBe(Money.fromUnits(2_475));
+    // 78 h of `GROWING` at the 0.6 %/h of GDD section 82: 46.8 % at harvest, in the
+    // order of the ~20 % GDD section 119 assumes. Before the revision the plowing and
+    // harvesting tasks also accumulated (246.07 h in total) and the level saturated at
+    // 100 %, which forced the maximum penalty of 50 % on every cycle.
+    expect(kpis.weedGrowingGameHours).toBe(78);
+    expect(kpis.weedLevelAtHarvestBp).toBe(4_680);
+    expect(kpis.yield.weedPenalty).toBeCloseTo(0.1872, 12);
+    expect(kpis.yield.liters).toBe(18_288);
+    expect(kpis.revenuePerCycle).toBe(Money.fromString('16459.20'));
   });
 
-  it('quantifies the finding: cultivating cannot avoid saturation on a field this size', () => {
-    // Cultivating resets the weeds (GDD section 89), so the only stretch that matters
-    // afterwards is growth plus the time the ready field waits to be harvested. On 250
-    // cells that is already 176.04 h against the 166.67 h the published rate needs to
-    // saturate, so the reset buys nothing: the maximum penalty is unavoidable. Field size
-    // is therefore the real lever, and the threshold is arithmetic and not a guess.
-    const saturationGameHours = 10_000 / WHEAT.weedGrowthBpPerGameHour;
-    expect(saturationGameHours).toBeCloseTo(166.6667, 4);
+  it('records that the weed level no longer depends on field size or on cultivating', () => {
+    // Under the strict H8 reading the accumulation window is the fixed 78 h growth
+    // phase: task durations are excluded, so a larger field lengthens the cycle but
+    // not the window, and cultivating (which resets the level before sowing) has no
+    // effect on the harvest because `GROWING` always starts after sowing. Weeds are a
+    // flat, predictable levy on the MVP cycle; making them a decision again would need
+    // idle-time accumulation, recorded as an open question of the 2026-08 revision.
+    const smaller = balanceKpis({ ...SCENARIO, fieldCells: 120 });
+    expect(smaller.weedGrowingGameHours).toBe(78);
+    expect(smaller.weedLevelAtHarvestBp).toBe(4_680);
     const harvestGameHours = estimateTaskDuration({
       operation: 'HARVEST',
       units: SCENARIO.fieldCells,
       conditionBp: SCENARIO.machineConditionBp,
       skillBp: SCENARIO.operatorSkillBp,
     }).durationGameHours;
-    expect(WHEAT.phaseDurationsGameHours.GROWING + harvestGameHours).toBeCloseTo(176.0392, 4);
-    expect(WHEAT.phaseDurationsGameHours.GROWING + harvestGameHours).toBeGreaterThan(
-      saturationGameHours,
-    );
-
-    // A field of 120 cells stays below saturation even counting the plowing, during which
-    // the field is still virgin and the weeds are already growing.
-    const smaller = balanceKpis({ ...SCENARIO, fieldCells: 120 });
-    expect(smaller.weedGrowingGameHours).toBeCloseTo(158.6723, 4);
-    expect(smaller.weedLevelAtHarvestBp).toBe(9520);
-    expect(smaller.yield.weedPenalty).toBeCloseTo(0.4712, 4);
+    // The excluded stretches are real: harvesting alone is longer than the window.
+    expect(harvestGameHours).toBeGreaterThan(78);
   });
 });
 
 describe('GDD sections 121 and 125, the six KPIs', () => {
   const kpis = balanceKpis(SCENARIO);
 
-  it('has no break-even with the unadjusted values, which GDD 121 calls out', () => {
-    expect(Money.isNegative(kpis.netPerCycle)).toBe(true);
-    expect(kpis.breakEvenCycles).toBeNull();
-    expect(kpis.gameHoursToFirstBreakEven).toBeNull();
-    expect(breakEvenCycles(kpis.setup.total, kpis.revenuePerCycle, kpis.holding.total)).toBeNull();
+  it('reaches break-even with the revised values, unlike the literal GDD catalogue', () => {
+    // The all-upfront purchase is nearly neutral by design (+264.96 per cycle): it
+    // exists, but the staggered purchase of GDD section 120 is the strategy that
+    // actually pays. Before the revision the net was -23 213 and no break-even existed.
+    expect(Money.isNegative(kpis.netPerCycle)).toBe(false);
+    expect(kpis.netPerCycle).toBe(Money.fromString('264.9565'));
+    expect(kpis.breakEvenCycles).toBeCloseTo(551.41, 2);
+    expect(
+      breakEvenCycles(kpis.setup.total, kpis.revenuePerCycle, kpis.holding.total),
+    ).not.toBeNull();
   });
 
-  it('reports a revenue to cost ratio of 0.096 against the target of 1.3 to 1.8', () => {
-    expect(kpis.revenueToCostRatio).toBeCloseTo(0.0963, 4);
+  it('reports a revenue to cost ratio of 1.016 for the all-upfront purchase', () => {
+    expect(kpis.revenueToCostRatio).toBeCloseTo(1.0164, 4);
   });
 
-  it('deviation: even the staggered purchase of GDD 120 does not reach break-even', () => {
-    // GDD section 120 recommends combining lever A (lower possession cost through
-    // staggered purchase) with lever C (a shorter cycle). Buying each machine when its
-    // phase starts cuts the holding cost from 25 689 to 20 006, and the ratio only rises
-    // from 0.096 to 0.124: the shortfall is an order of magnitude, not a margin.
+  it('rewards the staggered purchase of GDD 120 with a ratio of 1.287', () => {
+    // Buying each machine when its phase starts cuts the holding cost from 16 194 to
+    // 12 785, lifts the net per cycle to 3 674.49, and brings break-even to about 40
+    // cycles. The gap between the two ownership modes is the intended teaching of GDD
+    // section 120: the recommended strategy is the profitable one.
     const staggered = balanceKpis({ ...SCENARIO, ownershipMode: 'STAGGERED' });
-    expect(staggered.holding.total).toBe(Money.fromString('20006.2156'));
-    expect(staggered.holding.maintenance).toBe(Money.fromString('6355.0812'));
-    expect(staggered.revenueToCostRatio).toBeCloseTo(0.1237, 4);
-    expect(staggered.breakEvenCycles).toBeNull();
+    expect(staggered.holding.total).toBe(Money.fromString('12784.7057'));
+    expect(staggered.holding.maintenance).toBe(Money.fromString('3422.6387'));
+    expect(staggered.revenueToCostRatio).toBeCloseTo(1.2874, 4);
+    expect(staggered.breakEvenCycles).toBeCloseTo(39.76, 2);
   });
 
   it('exposes the six KPIs of GDD section 125 as one object', () => {
     expect(kpis.minimumSetupCost).toBe(Money.fromUnits(146_100));
-    expect(kpis.holdingCostPerCycle).toBe(Money.fromString('25688.7786'));
-    expect(kpis.revenuePerCycle).toBe(Money.fromUnits(2_475));
+    expect(kpis.holdingCostPerCycle).toBe(Money.fromString('16194.2435'));
+    expect(kpis.revenuePerCycle).toBe(Money.fromString('16459.20'));
     expect(kpis.revenueToCostRatio).not.toBeNull();
-    expect(kpis.gameHoursToFirstBreakEven).toBeNull();
+    expect(kpis.gameHoursToFirstBreakEven).not.toBeNull();
     expect(kpis.capitalCushionAfterSetup).toBe(Money.fromUnits(13_900));
   });
 });

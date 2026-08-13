@@ -1,5 +1,11 @@
 # Balance del MVP: informe para revisión externa
 
+> **Nota (agosto de 2026).** Este informe describe el estado anterior a la revisión de
+> balance registrada en `docs/balance/revision-2026-08.md`, que ajustó el precio de venta,
+> las tasas de maquinaria, la recta salarial y los estados de crecimiento de malezas. Se
+> conserva sin modificar como registro del estado que motivó dicha revisión; sus cifras ya
+> no describen el catálogo vigente.
+
 Documento redactado para que un revisor sin contexto previo pueda auditar el balance económico del
 juego y las decisiones tomadas alrededor de él. No requiere haber seguido la implementación.
 

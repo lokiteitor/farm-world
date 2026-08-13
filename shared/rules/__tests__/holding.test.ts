@@ -38,12 +38,12 @@ describe('holdingRatePerGameHour (GDD section 107)', () => {
       })),
     });
     expect(rate.wagesPerGameHour).toBe(Money.fromString('37.75'));
-    // Only the tractor and the combine have maintenance in the catalogue of GDD section
-    // 89; the implements declare none.
-    expect(rate.maintenancePerGameHour).toBe(Money.fromUnits(37));
+    // Only the tractor (6) and the combine (15) have maintenance; the implements
+    // declare none, as in the catalogue of GDD section 89.
+    expect(rate.maintenancePerGameHour).toBe(Money.fromUnits(21));
     // Operation is only paid by the machine that is working (GDD sections 94 and 107).
-    expect(rate.operatingPerGameHour).toBe(Money.fromUnits(22));
-    expect(rate.totalPerGameHour).toBe(Money.fromString('96.75'));
+    expect(rate.operatingPerGameHour).toBe(Money.fromUnits(10));
+    expect(rate.totalPerGameHour).toBe(Money.fromString('68.75'));
   });
 
   it('is maintenance only for an idle fleet, which is the point of GDD section 94', () => {
@@ -52,7 +52,7 @@ describe('holdingRatePerGameHour (GDD section 107)', () => {
       machines: FLEET.map((type) => ({ type, status: MachineStatus.IDLE })),
     });
     expect(rate.operatingPerGameHour).toBe(Money.ZERO);
-    expect(rate.totalPerGameHour).toBe(Money.fromUnits(37));
+    expect(rate.totalPerGameHour).toBe(Money.fromUnits(21));
   });
 
   it('is zero for an empty holding', () => {
@@ -117,9 +117,9 @@ describe('accrueContinuousCosts (GDD sections 107 and 124)', () => {
       tasks: [],
       openingBalance: Money.ZERO,
     };
-    // Combine: 25 x 50 h = 1 250. Tractor: 12 x 100 h = 1 200.
+    // Combine: 15 x 50 h = 750. Tractor: 6 x 100 h = 600.
     const accrual = accrueContinuousCosts(sources, { fromGameMs: at(0), toGameMs: at(100) });
-    expect(accrual.maintenance).toBe(Money.fromUnits(2_450));
+    expect(accrual.maintenance).toBe(Money.fromUnits(1_350));
   });
 
   it('charges operation over the interval of the task, per machine it reserves', () => {
@@ -136,9 +136,9 @@ describe('accrueContinuousCosts (GDD sections 107 and 124)', () => {
       ],
       openingBalance: Money.ZERO,
     };
-    // The tractor pays 22 per hour and the plow nothing (GDD section 89): 22 x 70 = 1 540.
+    // The tractor pays 10 per hour and the plow nothing: 10 x 70 = 700.
     expect(accrueContinuousCosts(sources, { fromGameMs: at(0), toGameMs: at(100) }).operating).toBe(
-      Money.fromUnits(1_540),
+      Money.fromUnits(700),
     );
   });
 
@@ -158,10 +158,10 @@ describe('accrueContinuousCosts (GDD sections 107 and 124)', () => {
       ],
       openingBalance: Money.ZERO,
     };
-    // 60 per hour for 30 hours instead of 98.
+    // 30 per hour for 30 hours instead of 98.
     expect(
       accrueContinuousCosts(cancelled, { fromGameMs: at(0), toGameMs: at(100) }).operating,
-    ).toBe(Money.fromUnits(1_800));
+    ).toBe(Money.fromUnits(900));
   });
 
   it('charges no overdraft interest at the default rate of zero', () => {
@@ -217,13 +217,18 @@ describe('accrueContinuousCosts (GDD sections 107 and 124)', () => {
     expect(integralToMoney(3_600_000n)).toBe(Money.fromString('0.0001'));
   });
 
-  it('reproduces the whole first cycle of GDD section 118 from its sources', () => {
+  it('reproduces the whole first cycle of the revised balance from its sources', () => {
     // The same timeline the balance calculator builds, assembled by hand here so the two
     // are cross checked: plow 0 to 70.028, seed to 131.302, growth to 227.302, harvest to
-    // 325.342.
+    // 325.342. The salary is the one the revised hiring rule produces for the 70 %
+    // starting worker (docs/balance/revision-2026-08.md).
     const sources: AccrualSources = {
       workers: [
-        { salaryPerGameHour: Money.fromUnits(15), hiredGameMs: at(0), terminatedGameMs: null },
+        {
+          salaryPerGameHour: Money.fromString('15.70'),
+          hiredGameMs: at(0),
+          terminatedGameMs: null,
+        },
       ],
       machines: FLEET.map((type) => ({ type, acquiredGameMs: at(0), disposedGameMs: null })),
       tasks: [
@@ -260,9 +265,9 @@ describe('accrueContinuousCosts (GDD sections 107 and 124)', () => {
       const difference = Money.toScaled(actual) - Money.toScaled(Money.fromString(expected));
       expect(difference <= 10n && difference >= -10n).toBe(true);
     };
-    near(accrual.wages, '4880.1258');
-    near(accrual.maintenance, '12037.6437');
-    near(accrual.operating, '8771.0084');
+    near(accrual.wages, '5107.8650');
+    near(accrual.maintenance, '6832.1761');
+    near(accrual.operating, '4254.2013');
   });
 
   it('agrees with the hourly rate when nothing changes over the window', () => {

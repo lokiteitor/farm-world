@@ -58,7 +58,7 @@ afterAll(async () => {
 });
 
 describe('POST /api/market/sell', () => {
-  it('abona exactamente 4.554 por 20.700 litros a 0,22 (GDD 82, 119 y 123)', async () => {
+  it('abona exactamente 18.630 por 20.700 litros a 0,90 (precio de la revision de balance)', async () => {
     const player = await createEconomyPlayer(harness, 'sell-golden');
     await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, FIRST_HARVEST_LITERS);
 
@@ -77,17 +77,18 @@ describe('POST /api/market/sell', () => {
     const result = body['result'] as Record<string, unknown>;
     expect(result['quantitySoldUnits']).toBe(FIRST_HARVEST_LITERS);
 
-    // The figure of GDD section 119, and the same figure derived from the catalogue.
-    expect(result['revenue']).toBe('4554.0000');
+    // The litres of GDD section 119 at the revised price of 0.90, and the same figure
+    // derived from the catalogue.
+    expect(result['revenue']).toBe('18630.0000');
     expect(result['revenue']).toBe(Money.toString(cropSaleRevenue(WHEAT, FIRST_HARVEST_LITERS)));
     expect(result['balanceAfter']).toBe(
-      Money.toString(Money.add(STARTING_CAPITAL, Money.fromUnits(4_554))),
+      Money.toString(Money.add(STARTING_CAPITAL, Money.fromUnits(18_630))),
     );
 
     const usage = result['usage'] as Record<string, unknown>;
     expect(usage['storedUnits']).toBe(0);
     expect(await balanceOf(harness, player.playerId)).toBe(
-      Money.toString(Money.add(STARTING_CAPITAL, Money.fromUnits(4_554))),
+      Money.toString(Money.add(STARTING_CAPITAL, Money.fromUnits(18_630))),
     );
   });
 

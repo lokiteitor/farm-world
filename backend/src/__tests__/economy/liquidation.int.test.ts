@@ -133,15 +133,15 @@ describe('la liquidacion forzosa', () => {
     const plowId = await createMachine(harness, player, MachineType.PLOW);
     const seederId = await createMachine(harness, player, MachineType.SEEDER);
 
-    // Stock 2 200 + plow 3 900 + seeder 5 880 + silo 6 000 = 17 980 liquidatable, so the
-    // threshold is 5 394 and a debt of 6 000 is past it.
+    // Stock 9 000 + plow 3 900 + seeder 5 880 + silo 6 000 = 24 780 liquidatable, so the
+    // threshold is 7 434 and a debt of 10 000 is past it.
     const stock = cropSaleRevenue(WHEAT, 10_000);
     const plow = resaleOf(MachineType.PLOW);
     const seeder = resaleOf(MachineType.SEEDER);
     const liquidatable = Money.sum([stock, plow, seeder, Money.fromUnits(6_000)]);
-    expect(liquidatable).toBe(Money.toString(Money.fromUnits(17_980)));
+    expect(liquidatable).toBe(Money.toString(Money.fromUnits(24_780)));
     const threshold = Money.mulBp(liquidatable, LIQUIDATION_DEBT_THRESHOLD_BP);
-    const debt = Money.fromUnits(6_000);
+    const debt = Money.fromUnits(10_000);
     expect(Money.compare(debt, threshold)).toBe(1);
 
     await forceDebt(player, debt, 'threshold');
@@ -174,8 +174,8 @@ describe('la liquidacion forzosa', () => {
     });
     expect(machines.filter((machine) => machine.disposedGameMs !== null)).toHaveLength(1);
 
-    // -6 000 + 2 200 + 3 900 = 100.
-    expect(await balanceOf(harness, player.playerId)).toBe(Money.toString(Money.fromUnits(100)));
+    // -10 000 + 9 000 + 3 900 = 2 900.
+    expect(await balanceOf(harness, player.playerId)).toBe(Money.toString(Money.fromUnits(2_900)));
 
     const meta = liquidation[2]?.meta as Record<string, unknown>;
     expect(meta['stepsRun']).toEqual(['INVENTORY', 'IDLE_MACHINES']);

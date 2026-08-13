@@ -112,10 +112,11 @@ describe('GET /api/machines/catalog', () => {
     expect(machines).toHaveLength(MACHINE_TYPES.length);
 
     const tractor = machines.find((entry) => entry['type'] === MachineType.TRACTOR);
-    // GDD §89: 18.000 $ de compra, 12 $/h de mantenimiento y 22 $/h de operacion.
+    // 18.000 $ de compra (GDD §89); 6 $/h de mantenimiento y 10 $/h de operacion, las
+    // tasas de la revision de balance de 2026-08.
     expect(tractor?.['purchasePrice']).toBe('18000.0000');
-    expect(tractor?.['maintenanceCostPerGameHour']).toBe('12.0000');
-    expect(tractor?.['operatingCostPerGameHour']).toBe('22.0000');
+    expect(tractor?.['maintenanceCostPerGameHour']).toBe('6.0000');
+    expect(tractor?.['operatingCostPerGameHour']).toBe('10.0000');
     expect(tractor?.['compatibleImplements']).toEqual([
       MachineType.PLOW,
       MachineType.CULTIVATOR,

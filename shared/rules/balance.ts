@@ -130,7 +130,11 @@ export const MINIMUM_SETUP_SCENARIO: BalanceScenario = {
   landTerrain: 'GRASS',
   buildings: ['GARAGE', 'SILO', 'WORKER_HOME'],
   machines: ['TRACTOR', 'PLOW', 'SEEDER', 'HARVESTER', 'TRAILER'],
-  workers: [{ salaryPerGameHour: Money.fromUnits(15) }],
+  // The salary the hiring rule of GDD section 102 actually produces for the 70 %
+  // starting worker with the revised salary line (-6 + 0.31 x 70). The 15 $/h that
+  // GDD section 117 quoted was inconsistent with its own hiring rule, and the balance
+  // report flagged using it as an optimistic bias of the KPIs.
+  workers: [{ salaryPerGameHour: Money.fromString('15.70') }],
   operatorSkillBp: bp(7000),
   machineConditionBp: BP_ONE,
   fertilityBp: BP_ONE,

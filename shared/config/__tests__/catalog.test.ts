@@ -214,10 +214,13 @@ describe('crops (GDD sections 82 and 119)', () => {
   });
 
   it('reproduces the figures of wheat', () => {
-    // GDD section 82, revised in GDD section 119.
+    // GDD section 82, revised in GDD section 119. The sale price is the one figure
+    // that departs from the GDD: the balance revision of 2026-08 raised it from the
+    // published 0.22, which made every cycle deeply unprofitable
+    // (docs/balance/revision-2026-08.md).
     expect(CROPS.WHEAT.growthDurationGameHours as number).toBe(96);
     expect(CROPS.WHEAT.baseYieldPerCellLiters).toBe(90);
-    expect(Money.toString(CROPS.WHEAT.sellPricePerLiter)).toBe('0.2200');
+    expect(Money.toString(CROPS.WHEAT.sellPricePerLiter)).toBe('0.9000');
     expect(CROPS.WHEAT.weedGrowthBpPerGameHour as number).toBe(60);
     expect(CROPS.WHEAT.fertilityDrainPerCycleBp as number).toBe(1500);
   });

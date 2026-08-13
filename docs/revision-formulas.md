@@ -37,7 +37,7 @@ uno ya registrado y todavia sin corregir (H6).
 | H5 | Media | `tools/balance/report.ts:220` | CONFIRMADO. Afirmacion falsa y literales incrustados |
 | H6 | Baja | `tools/balance/deviations.ts:299` | CONFIRMADO. Ya registrado como errata 41, sin corregir |
 | H7 | Baja | `tools/balance/report.ts:157` | CONFIRMADO. KPI 2 rotulado como §114 no lo es |
-| H8 | Informativa | `shared/config/transitions.ts:138` | Lectura discutible de §78, sin efecto de balance |
+| H8 | Informativa | `shared/config/transitions.ts:138` | Lectura discutible de §78. Aplicada la lectura estricta en la revisión de balance de 2026-08 |
 | H9 | Trivial | `shared/config/workers.ts:40` | CONFIRMADO. Comentario inexacto, sin efecto |
 
 ### H1. La calculadora publica «1 %» donde deberia publicar «147,6 %»
@@ -303,6 +303,11 @@ arado y la de cosecha»). Tampoco tiene hoy efecto de balance, porque con la tas
 nivel satura igualmente: 78 + 98,04 = 176,04 h bastan para llegar al 100 %. Se registra
 porque es una interpretacion de §78 que no figura en `docs/erratas-gdd-stack.md` y que si
 tendria efecto si la tasa se ajustara alguna vez.
+
+*Actualizacion (agosto de 2026):* la revision de balance de `docs/balance/revision-2026-08.md`
+adopto la lectura estricta de este hallazgo: `WEED_GROWTH_STATES` contiene solo `GROWING`. La
+consecuencia sobre el abandono (un campo virgen o sin cosechar ya no acumula malezas) queda
+registrada alli como asunto abierto.
 
 ### H9. El comentario de la recta de salarios describe un ajuste que no es el suyo
 
