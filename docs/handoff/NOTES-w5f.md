@@ -76,23 +76,6 @@ Convenciones respetadas, para quien escriba los cinco paneles que quedan:
 
 ## 3. Pendiente para otros agentes
 
-### 3.3 La guia de arranque no es alcanzable desde su pestana
-
-Categoria: cambio en fichero congelado
-Ficheros afectados: `frontend/app/components/panels/registry.ts`, `PANEL_TABS`
-Propietario del cambio: W3-C (cerrado), a aplicar por W7-A
-
-`starting-guide` esta declarado con superficie `SIDE` y pestana `help`, pero
-`PANEL_TABS.help.defaultPanel` es `legend` y `TabBar` solo abre el panel por omision de la
-pestana. Es el mismo hueco que W4-E encontro con `settings` (`NOTES-w4e.md` 1.4): el panel existe
-y nadie lo abre.
-
-Mitigacion adoptada, dentro del ambito: el panel de maquinaria lleva un boton «Guia de arranque»
-en su cabecera, que es ademas donde tiene sentido —la compra de la cosechadora el dia uno es el
-error que la guia existe para evitar— y la guia enlaza de vuelta con los cuatro paneles de sus
-pasos. Si W7 prefiere una entrada en la barra superior o un submenu de pestana, retirar el boton
-es una linea.
-
 ### 3.4 El reductor no aplica los contadores de plaza que traen las respuestas
 
 Categoria: cambio en fichero congelado
@@ -281,6 +264,38 @@ por las pruebas puras de `sale.ts` y por el camino comun con el trigo.
 
 Las notas aplicadas se conservan aqui con su numeracion original, porque otros documentos y
 varios comentarios de codigo las citan por numero.
+
+### 3.3 La guia de arranque no es alcanzable desde su pestana
+
+Aplicado: `PANEL_TABS`, fila `help`, `defaultPanel: 'legend'` pasa a `'starting-guide'`.
+
+El cierre de W6 dejo la nota sin aplicar por entender que la entrada exigia un submenu de
+pestana. No lo exige, y la razon es la superficie: `legend` es un overlay que la pagina pinta
+sobre el lienzo desde que monta, de modo que la pestana Ayuda estaba gastando su unico hueco
+lateral en una segunda copia de un panel que ya estaba en pantalla. Con la guia como panel por
+omision no se pierde nada y la pestana pasa a responder lo que se le pregunta. `registry.test.ts`
+gana la invariante que faltaba: el panel por omision de una pestana es de superficie `SIDE` y
+declara esa misma pestana, que es lo unico que `selectTab` sabe abrir.
+
+El boton «Guia de arranque» de la cabecera de maquinaria se conserva: dejo de ser mitigacion y
+es el atajo contextual donde el error que la guia evita se comete.
+
+El texto original de la nota:
+
+Categoria: cambio en fichero congelado
+Ficheros afectados: `frontend/app/components/panels/registry.ts`, `PANEL_TABS`
+Propietario del cambio: W3-C (cerrado), a aplicar por W7-A
+
+`starting-guide` esta declarado con superficie `SIDE` y pestana `help`, pero
+`PANEL_TABS.help.defaultPanel` es `legend` y `TabBar` solo abre el panel por omision de la
+pestana. Es el mismo hueco que W4-E encontro con `settings` (`NOTES-w4e.md` 1.4): el panel existe
+y nadie lo abre.
+
+Mitigacion adoptada, dentro del ambito: el panel de maquinaria lleva un boton «Guia de arranque»
+en su cabecera, que es ademas donde tiene sentido —la compra de la cosechadora el dia uno es el
+error que la guia existe para evitar— y la guia enlaza de vuelta con los cuatro paneles de sus
+pasos. Si W7 prefiere una entrada en la barra superior o un submenu de pestana, retirar el boton
+es una linea.
 
 ### 3.6 El servidor simulado no aplica `expectedTotal`
 

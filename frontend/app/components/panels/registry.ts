@@ -38,7 +38,13 @@ export const PANEL_TABS = [
   { id: 'tasks', label: 'Tareas', defaultPanel: 'task-list' },
   { id: 'economy', label: 'Economia', defaultPanel: 'market' },
   { id: 'forestry', label: 'Silvicultura', defaultPanel: 'forestry' },
-  { id: 'help', label: 'Ayuda', defaultPanel: 'legend' },
+  // The starting guide and not the legend, which was the one default of this table that
+  // pointed at a panel the tab could not show: `legend` is an overlay, drawn over the canvas
+  // from the moment the page mounts, so opening Ayuda painted a second copy of it in the side
+  // column and left the guide of GDD section 120 reachable only from the machinery panel or
+  // from the first session of a player. The guide is a side panel and it is the answer the
+  // tab is asked for.
+  { id: 'help', label: 'Ayuda', defaultPanel: 'starting-guide' },
 ] as const;
 
 export type PanelTabId = (typeof PANEL_TABS)[number]['id'];

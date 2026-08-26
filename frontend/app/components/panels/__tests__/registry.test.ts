@@ -97,6 +97,17 @@ describe('el registro de paneles', () => {
     expect(PANEL_TAB_IDS).toHaveLength(PANEL_TABS.length);
   });
 
+  it('el panel por omision de una pestana es de la columna lateral y de esa pestana', () => {
+    // `selectTab` escribe el panel por omision en el hueco lateral sin mirar la superficie,
+    // de modo que una pestana que apunte a un overlay o a un modal pinta ahi un panel que no
+    // es para ese sitio: era el caso de Ayuda, que abria una segunda copia de la leyenda.
+    for (const tab of PANEL_TABS) {
+      const target = PANEL_REGISTRY[tab.defaultPanel as PanelId];
+      expect(target.surface).toBe(PanelSurface.SIDE);
+      expect(target.tab).toBe(tab.id);
+    }
+  });
+
   it('todo panel con pestana declara una pestana que existe', () => {
     for (const id of PANEL_IDS) {
       const tab = PANEL_REGISTRY[id].tab;
