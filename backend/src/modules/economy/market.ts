@@ -10,8 +10,15 @@
 // 0.22 and 45, and the day the catalogue is retuned the interface would quote a figure the
 // server refuses to pay.
 //
+// WHAT IS PRICED, since this is what changed when the catalogue grew past one crop. The
+// price belongs to the crop and not to the storage category: pricing by category would make
+// the twenty two crops of `GRAIN_LITERS` worth the same per litre, and the player would
+// always sow whichever yields the most litres per hour, collapsing sixty two crops into
+// four decisions. So stock is held as one pile per crop (`farm_stock`) and a sale names a
+// pile, while the category only decides which store had to be built.
+//
 // The unit is the part that is easy to get wrong. Stock is always an integer in the stored
-// unit (ADR-0013): litres for wheat, cubic decimetres for wood. The sale price of GDD
+// unit (ADR-0013): litres for every crop, cubic decimetres for wood. The sale price of GDD
 // section 133 is per cubic metre, so the price per stored unit is that figure divided by a
 // thousand. The division is exact for the current catalogue (45 / 1000 = 0.0450, and money
 // keeps four decimals), and the revenue is nevertheless computed with `woodSaleRevenue` of
@@ -27,6 +34,8 @@ import { type MutationContext } from '../../lib/advancePlayer.js';
 import { credit, findEntryByKey } from '../../lib/ledger.js';
 import {
   ApiError,
+  CROPS,
+  CROP_IDS,
   DM3_PER_M3,
   LedgerType,
   Money,
@@ -34,52 +43,72 @@ import {
   STORAGE_RESOURCE_UNITS,
   StorageResource,
   ValidationCode,
-  WHEAT,
   cropSaleRevenue,
   insufficientStock,
   woodSaleRevenue,
   type FarmId,
   type LedgerEntry,
   type MarketPrice,
+  type StockItem,
   type StorageUsage,
 } from '../../shared/index.js';
-import { requireFarm, storageUsageOf, withdrawStorage, type FarmRow } from '../farms/service.js';
+import {
+  loadFarmStock,
+  loadFarmStorage,
+  requireFarm,
+  storageUsageOf,
+  withdrawStorage,
+  type FarmStockRow,
+} from '../farms/service.js';
+
+/** Whether a pile is timber rather than a crop. The one case the catalogue does not hold. */
+function isWood(item: StockItem): item is 'WOOD' {
+  return item === 'WOOD';
+}
+
+/** The storage category a pile belongs to. Mirrors `farm_world_stock_item_category`. */
+export function categoryOfItem(item: StockItem): StorageResource {
+  return isWood(item) ? StorageResource.WOOD_M3 : CROPS[item].storageResource;
+}
 
 // ---------------------------------------------------------------------------
 // Prices
 // ---------------------------------------------------------------------------
 
 /**
- * The ledger kind a sale of each resource is recorded under. Declared as a table keyed by
- * the union so that a resource added to the vocabulary does not compile until it has a
+ * The ledger kind a sale of each category is recorded under. Declared as a table keyed by
+ * the union so that a category added to the vocabulary does not compile until it has a
  * kind, instead of falling through a `switch` into a wrong entry.
+ *
+ * Keyed by category and not by pile on purpose: sixty two entries all reading `CROP_SALE`
+ * would be a table that says nothing, and the ledger has never distinguished one crop from
+ * another.
  */
 export const SALE_LEDGER_TYPE: Readonly<Record<StorageResource, LedgerType>> = {
-  WHEAT_LITERS: LedgerType.CROP_SALE,
+  GRAIN_LITERS: LedgerType.CROP_SALE,
+  FORAGE_LITERS: LedgerType.CROP_SALE,
+  PRODUCE_LITERS: LedgerType.CROP_SALE,
+  INDUSTRIAL_LITERS: LedgerType.CROP_SALE,
   WOOD_M3: LedgerType.WOOD_SALE,
 };
 
 /**
  * Price of one stored unit (GDD sections 82, 123 and 133).
  *
- * Wheat is priced per litre and the stored unit is the litre, so the catalogue value is
+ * A crop is priced per litre and the stored unit is the litre, so the catalogue value is
  * used unchanged. Wood is priced per cubic metre and stored per cubic decimetre, so the
  * catalogue value is divided by `DM3_PER_M3` over the scaled integer representation, never
  * with floating point.
  */
-export function pricePerStoredUnit(resource: StorageResource): Money {
-  if (resource === StorageResource.WHEAT_LITERS) {
-    return WHEAT.sellPricePerLiter;
-  }
-  return Money.fromScaled(Money.toScaled(PINE.sellPricePerM3) / BigInt(DM3_PER_M3));
+export function pricePerStoredUnit(item: StockItem): Money {
+  return isWood(item)
+    ? Money.fromScaled(Money.toScaled(PINE.sellPricePerM3) / BigInt(DM3_PER_M3))
+    : CROPS[item].sellPricePerLiter;
 }
 
 /** Price of one display unit, for the panel. Derived, and never used in a calculation. */
-export function pricePerDisplayUnit(resource: StorageResource): Money {
-  if (resource === StorageResource.WHEAT_LITERS) {
-    return WHEAT.sellPricePerLiter;
-  }
-  return PINE.sellPricePerM3;
+export function pricePerDisplayUnit(item: StockItem): Money {
+  return isWood(item) ? PINE.sellPricePerM3 : CROPS[item].sellPricePerLiter;
 }
 
 /**
@@ -89,30 +118,36 @@ export function pricePerDisplayUnit(resource: StorageResource): Money {
  * figure the market pays and the figure `liquidationValue` uses to decide whether a forced
  * liquidation is needed come from one implementation.
  */
-export function saleRevenue(resource: StorageResource, units: number): Money {
+export function saleRevenue(item: StockItem, units: number): Money {
   const whole = units > 0 ? Math.floor(units) : 0;
-  return resource === StorageResource.WHEAT_LITERS
-    ? cropSaleRevenue(WHEAT, whole)
-    : woodSaleRevenue(PINE, whole);
+  return isWood(item) ? woodSaleRevenue(PINE, whole) : cropSaleRevenue(CROPS[item], whole);
 }
 
-/** The whole price list, in the declaration order of `StorageResource`. */
+/**
+ * The whole price list: one line per crop, plus timber.
+ *
+ * `CROP_IDS` is walked explicitly rather than `Object.keys(CROPS)`, so the order of the
+ * reply is the catalogue order and not whatever the object literal happens to enumerate.
+ */
 export function marketPrices(): readonly MarketPrice[] {
-  return Object.values(StorageResource).map((resource): MarketPrice => {
-    const units = STORAGE_RESOURCE_UNITS[resource];
+  const items: readonly StockItem[] = [...CROP_IDS, 'WOOD'];
+  return items.map((item): MarketPrice => {
+    const category = categoryOfItem(item);
+    const units = STORAGE_RESOURCE_UNITS[category];
     return {
-      resource,
-      pricePerStoredUnit: Money.toString(pricePerStoredUnit(resource)),
+      item,
+      category,
+      pricePerStoredUnit: Money.toString(pricePerStoredUnit(item)),
       storedUnit: units.storedUnit,
-      pricePerDisplayUnit: Money.toString(pricePerDisplayUnit(resource)),
+      pricePerDisplayUnit: Money.toString(pricePerDisplayUnit(item)),
       displayUnit: units.displayUnit,
     };
   });
 }
 
-/** Market value of a stock, which is what the inventory reply reports per line. */
-export function stockMarketValue(farm: FarmRow, resource: StorageResource): Money {
-  return saleRevenue(resource, storageUsageOf(farm, resource).storedUnits);
+/** Market value of one pile, which is what the inventory reply reports per line. */
+export function stockMarketValue(stock: FarmStockRow): Money {
+  return saleRevenue(stock.item, stock.storedUnits);
 }
 
 // ---------------------------------------------------------------------------
@@ -121,8 +156,9 @@ export function stockMarketValue(farm: FarmRow, resource: StorageResource): Mone
 
 export interface SellStockInput {
   readonly farmId: string;
-  readonly resource: StorageResource;
-  /** Quantity in the stored unit, or null for the whole stock of that resource. */
+  /** The pile being sold: one crop, or timber. */
+  readonly item: StockItem;
+  /** Quantity in the stored unit, or null for the whole stock of that pile. */
   readonly quantityUnits: number | null;
   /** Idempotency key of the ledger entry, derived from the header by the route. */
   readonly idempotencyKey: string;
@@ -130,7 +166,8 @@ export interface SellStockInput {
 
 export interface SellStockOutcome {
   readonly farmId: FarmId;
-  readonly resource: StorageResource;
+  readonly item: StockItem;
+  readonly category: StorageResource;
   readonly quantitySoldUnits: number;
   readonly revenue: Money;
   readonly balanceAfter: Money;
@@ -170,23 +207,29 @@ export async function sellStock(
   const { tx, reading, services } = ctx;
   const playerId = ctx.lock.playerId;
 
+  const category = categoryOfItem(input.item);
   const existing = await findEntryByKey(tx, playerId, input.idempotencyKey);
   if (existing !== null) {
     const farm = await requireFarm(tx, playerId, input.farmId);
+    const storage = await loadFarmStorage(tx, [farm.id]);
     return {
       farmId: farm.id as FarmId,
-      resource: input.resource,
+      item: input.item,
+      category,
       quantitySoldUnits: unitsOfEntry(existing),
       revenue: existing.amount,
       balanceAfter: existing.balanceAfter,
-      usage: storageUsageOf(farm, input.resource),
+      usage: storageUsageOf(storage, category),
       entry: existing,
       replayed: true,
     };
   }
 
   const farm = await requireFarm(tx, playerId, input.farmId);
-  const available = storageUsageOf(farm, input.resource).storedUnits;
+  // The stock of the pile, not of the category: a farm holding barley must not be able to
+  // sell wheat it does not have, even though both count against the same silo.
+  const stock = await loadFarmStock(tx, [farm.id]);
+  const available = stock.find((row) => row.item === input.item)?.storedUnits ?? 0;
   const requested = input.quantityUnits ?? available;
 
   if (requested <= 0) {
@@ -202,14 +245,14 @@ export async function sellStock(
     throw insufficientStock(requested, available);
   }
 
-  const withdrawal = await withdrawStorage(tx, farm.id, input.resource, requested);
+  const withdrawal = await withdrawStorage(tx, farm.id, input.item, category, requested);
   if (!withdrawal.ok) {
     // The stock moved between the reading and the update, which is the concurrent sale.
     throw insufficientStock(requested, withdrawal.usage.storedUnits);
   }
 
-  const revenue = saleRevenue(input.resource, requested);
-  const type = SALE_LEDGER_TYPE[input.resource];
+  const revenue = saleRevenue(input.item, requested);
+  const type = SALE_LEDGER_TYPE[category];
   const written = await credit(tx, ctx.lock, {
     type,
     amount: revenue,
@@ -219,9 +262,10 @@ export async function sellStock(
     refType: 'FARM',
     refId: farm.id,
     meta: {
-      resource: input.resource,
+      item: input.item,
+      category,
       units: requested,
-      pricePerStoredUnit: Money.toString(pricePerStoredUnit(input.resource)),
+      pricePerStoredUnit: Money.toString(pricePerStoredUnit(input.item)),
       gddSection: 123,
     },
   });
@@ -229,7 +273,8 @@ export async function sellStock(
 
   return {
     farmId: farm.id as FarmId,
-    resource: input.resource,
+    item: input.item,
+    category,
     quantitySoldUnits: requested,
     revenue,
     balanceAfter: written.balanceAfter,

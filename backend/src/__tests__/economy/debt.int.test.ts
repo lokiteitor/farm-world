@@ -32,7 +32,6 @@ import {
   OVERDRAFT_INTEREST_BP_PER_GAME_HOUR,
   PlayerStatus,
   STARTING_CAPITAL,
-  StorageResource,
   ValidationCode,
   isApiError,
   type World,
@@ -115,7 +114,7 @@ describe('la politica de deuda', () => {
 
   it('no bloquea vender con el saldo negativo, que es la unica via de ingreso', async () => {
     const player = await createEconomyPlayer(harness, 'debt-sell');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 10_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 10_000);
     await grant(
       harness,
       player.accessToken,
@@ -127,7 +126,7 @@ describe('la politica de deuda', () => {
     const { statusCode, body } = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WHEAT_LITERS, quantityUnits: 10_000 },
+      { farmId: player.farmId, item: 'WHEAT', quantityUnits: 10_000 },
       'debt-sell-1',
     );
 

@@ -16,7 +16,7 @@
 // of GDD section 115. That is what `purchaseFootprintLand` selects.
 
 import { z } from 'zod';
-import { BuildingType } from '../../domain/enums.js';
+import { BuildingType, StorageResource } from '../../domain/enums.js';
 import {
   buildingIdSchema,
   cellCoordSchema,
@@ -41,8 +41,8 @@ export const slotUsageSchema = z.strictObject({
 export type SlotUsage = z.infer<typeof slotUsageSchema>;
 
 /**
- * Stock of one fungible resource on a farm, in the stored unit of that resource
- * (`STORAGE_RESOURCE_UNITS`): litres for wheat, cubic decimetres for wood.
+ * Occupancy of one storage category on a farm, in the stored unit of that category
+ * (`STORAGE_RESOURCE_UNITS`): litres for every crop, cubic decimetres for wood.
  *
  * `reservedUnits` is capacity committed by tasks in flight: a harvest reserves room
  * in the silo when it is assigned, so that an overflow is an actionable rejection
@@ -57,11 +57,22 @@ export const storageUsageSchema = z.strictObject({
 });
 export type StorageUsage = z.infer<typeof storageUsageSchema>;
 
+/** Occupancy of one category, named, which is how the farm reports all of them. */
+export const farmStorageDtoSchema = z.strictObject({
+  category: z.enum(StorageResource),
+  usage: storageUsageSchema,
+});
+export type FarmStorageDto = z.infer<typeof farmStorageDtoSchema>;
+
 export const farmDtoSchema = z.strictObject({
   id: farmIdSchema,
   name: nameSchema,
-  wheat: storageUsageSchema,
-  wood: storageUsageSchema,
+  /**
+   * Every storage category, including the ones with no store built, which read as zero of
+   * zero. Total rather than sparse so the panel draws the same rows before and after the
+   * first silo exists.
+   */
+  storage: z.array(farmStorageDtoSchema),
   machineSlots: slotUsageSchema,
   workerSlots: slotUsageSchema,
   /** Whether the farm has a workshop, which is what repair requires (GDD sections 29 and 93). */

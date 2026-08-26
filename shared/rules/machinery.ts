@@ -24,7 +24,10 @@ import {
   MachineStatus,
   MachineType,
   ValidationCode,
+  type CropId,
   type MachineRole,
+  type StockItem,
+  type StorageResource,
   type TaskOperation,
 } from '../domain/enums.js';
 import { Money } from '../domain/money.js';
@@ -301,4 +304,41 @@ export function machineTypesForOperation(
   return requirement.requiredImplement === null
     ? [requirement.poweredMachine]
     : [requirement.poweredMachine, requirement.requiredImplement];
+}
+
+// ---------------------------------------------------------------------------
+// Storage target of an operation
+// ---------------------------------------------------------------------------
+
+/**
+ * Storage category an operation deposits into, and the pile it deposits into.
+ *
+ * The single place that resolves the `FROM_CROP` sentinel of `OPERATION_REQUIREMENTS`.
+ * Harvesting names no crop in its request (the field already carries one), so the
+ * category cannot be a constant of the operation: the caller passes the crop standing
+ * on the field and gets back both the bucket that has to have room and the pile the
+ * litres land in.
+ *
+ * Returns null when the operation stores nothing, and null as well when the operation
+ * needs a crop to know and none was given, which is a caller error the validation layer
+ * reports as `FIELD_CROP_REQUIRED` rather than something this function can decide.
+ */
+export function storageTargetOf(
+  operation: TaskOperation,
+  cropId: CropId | null,
+  crops: Readonly<Record<CropId, { readonly storageResource: StorageResource }>>,
+  requirements: Readonly<Record<TaskOperation, OperationRequirement>> = OPERATION_REQUIREMENTS,
+): { readonly category: StorageResource; readonly item: StockItem } | null {
+  const required = requirements[operation]?.requiresStorage ?? null;
+  if (required === null) {
+    return null;
+  }
+  if (required !== 'FROM_CROP') {
+    // Timber is the one fixed category left, and its pile is the resource itself.
+    return { category: required, item: 'WOOD' };
+  }
+  if (cropId === null) {
+    return null;
+  }
+  return { category: crops[cropId].storageResource, item: cropId };
 }

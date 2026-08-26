@@ -31,47 +31,96 @@
 import { type Db } from '../../lib/tx.js';
 import {
   STORAGE_RESOURCE_UNITS,
-  StorageResource,
+  STORAGE_RESOURCES,
+  type StorageResource,
   toWireGameMs,
   toWireMoney,
   type FarmId,
   type GameMs,
   type InventoryFarm,
+  type InventoryCategory,
   type InventoryLine,
   type InventoryReply,
   type PlayerId,
 } from '../../shared/index.js';
-import { loadFarms, storageUsageOf, type FarmRow } from '../farms/service.js';
-import { stockMarketValue } from './market.js';
+import {
+  loadFarmStock,
+  loadFarmStorage,
+  loadFarms,
+  storageUsageOf,
+  type FarmRow,
+  type FarmStockRow,
+  type FarmStorageRow,
+} from '../farms/service.js';
+import { categoryOfItem, stockMarketValue } from './market.js';
 
-/** The line of one resource on one farm (GDD sections 27, 49 and 136). */
-export function toInventoryLine(farm: FarmRow, resource: StorageResource): InventoryLine {
-  const units = STORAGE_RESOURCE_UNITS[resource];
+/** One pile of a farm (GDD sections 27, 49 and 136). */
+export function toInventoryLine(stock: FarmStockRow): InventoryLine {
+  const category = categoryOfItem(stock.item);
+  const units = STORAGE_RESOURCE_UNITS[category];
   return {
-    resource,
+    item: stock.item,
+    category,
     storedUnit: units.storedUnit,
     displayUnit: units.displayUnit,
     displayDivisor: units.displayDivisor,
-    usage: storageUsageOf(farm, resource),
-    marketValue: toWireMoney(stockMarketValue(farm, resource)),
+    storedUnits: stock.storedUnits,
+    reservedUnits: stock.reservedUnits,
+    marketValue: toWireMoney(stockMarketValue(stock)),
   };
 }
 
-/** Every resource of one farm, in the declaration order of `StorageResource`. */
-export function toInventoryFarm(farm: FarmRow): InventoryFarm {
+/** The capacity meters of a farm: one per category, including the empty ones. */
+export function toInventoryCategory(
+  storage: readonly FarmStorageRow[],
+  category: StorageResource,
+): InventoryCategory {
+  const units = STORAGE_RESOURCE_UNITS[category];
+  return {
+    category,
+    storedUnit: units.storedUnit,
+    displayUnit: units.displayUnit,
+    displayDivisor: units.displayDivisor,
+    usage: storageUsageOf(storage, category),
+  };
+}
+
+/**
+ * One farm: every category as a meter, and one line per pile that holds something.
+ *
+ * The two levels are the shape of the panel and the shape of the domain at once. Capacity
+ * belongs to the category, so that is what the meters draw; value belongs to the crop, so
+ * that is what the sellable lines are. Empty piles are omitted, which keeps the reply
+ * proportional to what the farm holds rather than to the size of the catalogue.
+ */
+export function toInventoryFarm(
+  farm: FarmRow,
+  storage: readonly FarmStorageRow[],
+  stock: readonly FarmStockRow[],
+): InventoryFarm {
   return {
     farmId: farm.id as FarmId,
-    lines: Object.values(StorageResource).map((resource) => toInventoryLine(farm, resource)),
+    categories: STORAGE_RESOURCES.map((category) => toInventoryCategory(storage, category)),
+    lines: stock.map(toInventoryLine),
   };
 }
 
-/** The inventory of every live farm of a player. One statement. */
+/** The inventory of every live farm of a player. Three statements, whatever the number. */
 export async function buildInventoryFarms(
   db: Db,
   playerId: PlayerId,
 ): Promise<readonly InventoryFarm[]> {
   const farms = await loadFarms(db, playerId);
-  return farms.map(toInventoryFarm);
+  const farmIds = farms.map((farm) => farm.id);
+  const storage = await loadFarmStorage(db, farmIds);
+  const stock = await loadFarmStock(db, farmIds);
+  return farms.map((farm) =>
+    toInventoryFarm(
+      farm,
+      storage.filter((row) => row.farmId === farm.id),
+      stock.filter((row) => row.farmId === farm.id),
+    ),
+  );
 }
 
 /** The whole `GET /api/inventory` reply. */

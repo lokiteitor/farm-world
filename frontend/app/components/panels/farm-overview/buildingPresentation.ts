@@ -34,6 +34,10 @@ export const BUILDING_TYPE_LABELS: Readonly<Record<BuildingType, string>> = {
   WORKSHOP: 'Taller',
   // GDD section 136.
   WOOD_STORAGE: 'Almacen de madera',
+  // Los tres del catalogo multicultivo, uno por categoria de almacen.
+  HAY_BARN: 'Henil',
+  COLD_STORE: 'Camara fria',
+  WAREHOUSE: 'Almacen',
 };
 
 /**
@@ -48,6 +52,11 @@ export const BUILDING_CAPACITY_SECTIONS: Readonly<Record<BuildingType, number>> 
   WORKER_HOME: 108,
   WORKSHOP: 29,
   WOOD_STORAGE: 136,
+  // Inventados: GDD section 116 solo costea los cuatro primeros, y la seccion 27 es la que
+  // define lo que es un almacen de una granja.
+  HAY_BARN: 27,
+  COLD_STORE: 27,
+  WAREHOUSE: 27,
 };
 
 /** Palette token the canvas paints the building with (plan section 9.4). */
@@ -57,6 +66,9 @@ export const BUILDING_TYPE_COLOURS: Readonly<Record<BuildingType, string>> = {
   WORKER_HOME: 'var(--fw-building-worker-home, #b6a58a)',
   WORKSHOP: 'var(--fw-building-workshop, #7a6a58)',
   WOOD_STORAGE: 'var(--fw-building-wood-storage, #8a6b45)',
+  HAY_BARN: 'var(--fw-building-hay-barn, #a8894f)',
+  COLD_STORE: 'var(--fw-building-cold-store, #dce4e8)',
+  WAREHOUSE: 'var(--fw-building-warehouse, #9c7a63)',
 };
 
 export function labelOfBuildingType(type: BuildingType): string {

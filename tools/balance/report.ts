@@ -26,7 +26,7 @@
 //        here from the GDD knows the deficit is a designed state and not an oversight.
 
 import { BUILDING_CATALOGUE } from '../../shared/config/buildings.js';
-import { WHEAT } from '../../shared/config/crops.js';
+import { CROPS, WHEAT } from '../../shared/config/crops/index.js';
 import {
   LIQUIDATION_DEBT_THRESHOLD_BP,
   LIQUIDATION_STEPS,
@@ -34,6 +34,7 @@ import {
   RESALE_FACTOR_BP,
 } from '../../shared/config/economy.js';
 import { MACHINE_CATALOGUE } from '../../shared/config/machines.js';
+import { CROP_FAMILIES, CROP_IDS, SEASONS, type CropId } from '../../shared/domain/enums.js';
 import { Money } from '../../shared/domain/money.js';
 import { type BalanceKpis } from '../../shared/rules/balance.js';
 import {
@@ -45,6 +46,8 @@ import {
   type Deviation,
 } from './deviations.js';
 import {
+  amount,
+  amountValue,
   decimal,
   hours,
   integer,
@@ -61,10 +64,13 @@ import {
   STAGGERED_SETUP,
   STARTING_CAPITAL,
 } from './scenarios.js';
+import { CROP_FAMILY_LABELS, SEASON_LABELS, STORAGE_CATEGORY_LABELS } from './vocabulary.js';
 import { WEED_STATES_LABEL, type WeedAnalysis } from './weeds.js';
 
 export interface ReportInput {
   readonly kpis: ReadonlyMap<string, BalanceKpis>;
+  /** The same setup run once per crop of the catalogue, keyed by identifier. */
+  readonly catalogue: ReadonlyMap<CropId, BalanceKpis>;
   readonly weeds: WeedAnalysis;
   readonly contractVersion: string;
 }
@@ -86,11 +92,12 @@ export function renderReport(input: ReportInput): string {
     sectionDeviations(rows),
     sectionWeeds(input.weeds),
     sectionBreakEven(minimum, staggered),
+    sectionCatalogue(input.catalogue),
     sectionConsequences(),
   ].join('\n\n');
 }
 
-function required(kpis: ReadonlyMap<string, BalanceKpis>, key: string): BalanceKpis {
+function required<K>(kpis: ReadonlyMap<K, BalanceKpis>, key: K): BalanceKpis {
   const value = kpis.get(key);
   if (value === undefined) {
     throw new Error(`El informe necesita el escenario ${key} y no se ha evaluado.`);
@@ -553,9 +560,151 @@ function sectionBreakEven(minimum: BalanceKpis, staggered: BalanceKpis): string 
   ].join('\n');
 }
 
+/**
+ * The catalogue, one row per crop, on the setup of GDD section 117.
+ *
+ * Deliberately not one section per crop. Sixty two narratives would be four thousand lines
+ * nobody reads and would turn every retune of a constant into a diff nobody can review. The
+ * question a designer asks with sixty two crops is not "what does the beet yield" but "is
+ * any crop broken, and how far apart are they", and that is what a table and a dispersion
+ * answer in two screens.
+ */
+function sectionCatalogue(catalogue: ReadonlyMap<CropId, BalanceKpis>): string {
+  const rows = CROP_IDS.map((cropId) => {
+    const crop = CROPS[cropId];
+    const value = catalogue.get(cropId);
+    if (value === undefined) {
+      throw new Error(`El informe necesita los KPI del cultivo ${cropId} y no se han evaluado.`);
+    }
+    return [
+      crop.nameEs,
+      CROP_FAMILY_LABELS[crop.family],
+      STORAGE_CATEGORY_LABELS[crop.storageResource],
+      crop.sowingSeasons.map((season) => SEASON_LABELS[season]).join(', '),
+      hours(value.cycleGameHours),
+      integer(crop.baseYieldPerCellLiters),
+      amount(crop.sellPricePerLiter),
+      money(value.revenuePerCycle),
+      money(value.holdingCostPerCycle),
+      money(value.netPerCycle),
+      decimal(netPerGameHour(value), 2),
+    ];
+  });
+
+  const margins = CROP_IDS.map((cropId) => netPerGameHour(required(catalogue, cropId)));
+  const sorted = [...margins].sort((left, right) => left - right);
+  const middle = median(sorted);
+  const lowest = sorted[0] ?? 0;
+  const highest = sorted[sorted.length - 1] ?? 0;
+  const outliers = CROP_IDS.filter(
+    (cropId) =>
+      Math.abs(netPerGameHour(required(catalogue, cropId)) - middle) > 0.5 * Math.abs(middle),
+  );
+
+  return [
+    '## 9. El catalogo de cultivos',
+    '',
+    'Los sesenta y dos cultivos sobre el mismo setup de GDD §117: la misma tierra, los mismos',
+    'edificios, la misma maquinaria y el mismo trabajador. Solo cambia el cultivo, de modo que la',
+    'tabla compara los cultivos y nada mas. El margen por hora es lo que hay que mirar: un ciclo',
+    'largo con mas margen por ciclo puede rendir menos que uno corto que se repite.',
+    '',
+    '### 9.1 Tabla comparativa',
+    '',
+    table(
+      [
+        'Cultivo',
+        'Familia',
+        'Almacen',
+        'Siembra',
+        'Ciclo',
+        'Rendimiento (L/celda)',
+        'Precio (/L)',
+        'Ingreso / ciclo',
+        'Coste / ciclo',
+        'Margen / ciclo',
+        'Margen / hora',
+      ],
+      rows,
+    ),
+    '',
+    '### 9.2 Dispersion',
+    '',
+    'La cifra sobre la que se actua. Un catalogo bien afinado tiene los sesenta y dos cerca de la',
+    'mediana; uno roto tiene un cultivo que domina y sesenta y uno que nadie sembraria.',
+    '',
+    table(
+      ['Magnitud', 'Margen por hora de juego'],
+      [
+        ['Minimo', decimal(lowest, 2)],
+        ['Mediana', decimal(middle, 2)],
+        ['Maximo', decimal(highest, 2)],
+        ['Razon maximo/minimo', lowest === 0 ? '—' : ratio(highest / lowest)],
+      ],
+    ),
+    '',
+    '### 9.3 Cultivos fuera de banda',
+    '',
+    outliers.length === 0
+      ? 'Ninguno se aparta de la mediana en mas de la mitad de su valor. Esta seccion crece solo cuando hay un problema.'
+      : [
+          'Se apartan de la mediana en mas de la mitad de su valor:',
+          '',
+          ...outliers.map((cropId) => {
+            const margin = netPerGameHour(required(catalogue, cropId));
+            const direction = margin > middle ? 'por encima' : 'por debajo';
+            return `- **${CROPS[cropId].nameEs}**: ${decimal(margin, 2)} por hora, ${direction} de la mediana de ${decimal(middle, 2)}.`;
+          }),
+        ].join('\n'),
+    '',
+    '### 9.4 Cobertura estacional',
+    '',
+    'Cuantos cultivos de cada familia admite cada estacion. Una estacion sin ningun cultivo viable',
+    'seria un trimestre muerto, y aqui se ve de un vistazo.',
+    '',
+    table(
+      ['Familia', ...SEASONS.map((season) => SEASON_LABELS[season])],
+      CROP_FAMILIES.map((family) => [
+        CROP_FAMILY_LABELS[family],
+        ...SEASONS.map((season) =>
+          integer(
+            CROP_IDS.filter(
+              (cropId) =>
+                CROPS[cropId].family === family && CROPS[cropId].sowingSeasons.includes(season),
+            ).length,
+          ),
+        ),
+      ]),
+    ),
+  ].join('\n');
+}
+
+/** Net per game hour of a cycle, which is what compares two crops of unlike length. */
+function netPerGameHour(value: BalanceKpis): number {
+  return value.cycleGameHours <= 0 ? 0 : amountValue(value.netPerCycle) / value.cycleGameHours;
+}
+
+/**
+ * Median of a sorted list.
+ *
+ * The tie break is declared rather than left to whichever element happens to land in the
+ * middle: the catalogue can change parity when a crop is added, and the report is
+ * deterministic byte for byte, so an undeclared rule would make the file move for a reason
+ * that has nothing to do with a constant changing.
+ */
+function median(sorted: readonly number[]): number {
+  if (sorted.length === 0) {
+    return 0;
+  }
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 1
+    ? (sorted[middle] ?? 0)
+    : ((sorted[middle - 1] ?? 0) + (sorted[middle] ?? 0)) / 2;
+}
+
 function sectionConsequences(): string {
   return [
-    '## 9. Consecuencias ya implementadas',
+    '## 10. Consecuencias ya implementadas',
     '',
     'Tras la revision de 2026-08 el deficit ya no es el estado permanente del ciclo, pero el paso',
     'por deuda sigue siendo parte del diseno: quien compra toda la flota el dia uno devenga mas que',

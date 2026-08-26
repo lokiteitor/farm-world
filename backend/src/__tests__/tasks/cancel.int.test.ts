@@ -40,7 +40,7 @@ import {
   gameHours,
   type PlayerId,
 } from '../../shared/index.js';
-import { bearer, createHarness, registerViaHttp, type Harness } from '../harness.js';
+import { bearer, createHarness, readStock, registerViaHttp, type Harness } from '../harness.js';
 import {
   cleanUp,
   createFieldRow,
@@ -283,11 +283,8 @@ describe('POST /api/tasks/:taskId/cancel', () => {
     const reserved = task['reservedStorageUnits'] as number;
     expect(reserved).toBeGreaterThan(0);
 
-    const committed = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { reservedWheatLiters: true },
-    });
-    expect(committed.reservedWheatLiters).toBe(reserved);
+    const committed = await readStock(harness, farm.farmId, 'WHEAT');
+    expect(committed.reservedUnits).toBe(reserved);
 
     harness.advanceGameHours(5);
     const cancelled = await post(
@@ -298,13 +295,10 @@ describe('POST /api/tasks/:taskId/cancel', () => {
     expect(cancelled.statusCode, JSON.stringify(cancelled.body)).toBe(200);
     expect(resultOf(cancelled)['releasedStorageUnits']).toBe(reserved);
 
-    const released = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { reservedWheatLiters: true, storedWheatLiters: true },
-    });
-    expect(released.reservedWheatLiters).toBe(0);
+    const released = await readStock(harness, farm.farmId, 'WHEAT');
+    expect(released.reservedUnits).toBe(0);
     // Y el silo sigue vacio: una tarea cancelada no produce nada (§106).
-    expect(released.storedWheatLiters).toBe(0);
+    expect(released.storedUnits).toBe(0);
 
     // El campo sigue listo para cosechar, de modo que el jugador puede volver a asignarla.
     const field = await harness.prisma.field.findUniqueOrThrow({
@@ -392,11 +386,8 @@ describe('la estrategia CANCEL_TASKS de la liquidacion forzosa', () => {
     expect(
       await harness.prisma.field.count({ where: { playerId, currentTaskId: { not: null } } }),
     ).toBe(0);
-    const farmRow = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { reservedWheatLiters: true },
-    });
-    expect(farmRow.reservedWheatLiters).toBe(0);
+    const farmRow = await readStock(harness, farm.farmId, 'WHEAT');
+    expect(farmRow.reservedUnits).toBe(0);
     expect(
       await harness.prisma.scheduledEvent.count({
         where: {

@@ -35,7 +35,7 @@ export { registerFieldsRoutes } from './routes.js';
 export { OWNED_EVENT_KIND, fieldAdvancePhaseHandler } from './jobs.js';
 
 export {
-  FALLOW_RATE_CROP,
+  landRatesOf,
   MAX_PHASE_SEGMENTS,
   availableOperations,
   cropOf,

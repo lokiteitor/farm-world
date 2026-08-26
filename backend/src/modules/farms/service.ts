@@ -14,8 +14,8 @@
 //      machine has identity and location; `Building.machineCount` is maintained by the
 //      trigger `machines_garage_occupancy` and bounded by `buildings_capacity_check`.
 //   2. Worker slots (GDD section 108). Same shape, through `workers_home_occupancy`.
-//   3. Storage of wheat and of wood (GDD sections 27 and 136). Aggregated per farm,
-//      because grain and wood are fungible, and maintained by the trigger
+//   3. Storage, by category (GDD sections 27 and 136). Aggregated per farm because the
+//      goods are fungible, and its capacity maintained by the trigger
 //      `buildings_farm_storage_capacity` from the live storage buildings.
 //   4. Repair access (GDD sections 29 and 93): whether the farm has a workshop.
 //
@@ -28,23 +28,32 @@
 //
 // The three storage writes follow the three layers of plan section 5.4 exactly:
 //
-//   `reserveStorage`  conditional update with a row count. Called when a harvest is
-//                     assigned, so an overflow is an actionable rejection instead of a
-//                     silent loss when the job completes.
-//   `depositStorage`  one bounded statement that computes what fits and reports the rest
-//                     as waste. It cannot violate the constraint by construction, which is
+//   `reserveStorage`  locks the category row, decides against it, and commits the room.
+//                     Called when a harvest is assigned, so an overflow is an actionable
+//                     rejection instead of a silent loss when the job completes.
+//   `depositStorage`  computes what fits against the locked row and reports the rest as
+//                     waste. It cannot violate the constraint by construction, which is
 //                     what keeps a completion job from ever retrying.
-//   `withdrawStorage` conditional update with a row count, for a sale.
+//   `withdrawStorage` same shape, for a sale.
 //
-// All three are raw SQL for one reason: the bound compares two columns of the same row
-// (`stored + reserved <= capacity`), and the typed client expresses no arithmetic between
-// columns. Every value is a bound parameter; the only text built is a column name taken
-// from the closed table `STORAGE_COLUMNS`, never from a request.
+// HOW THE TWO TABLES DIVIDE THE WORK, since this is what changed when the catalogue grew
+// past one crop. `farm_stock` holds one pile per crop, because the sale price belongs to
+// the crop and stock therefore has to remember what it came from. `farm_storage` holds
+// one row per category with the capacity and the CHECK, and a trigger recomputes its
+// totals from the piles. The aggregate row is the point of serialisation: every write
+// below takes `FOR UPDATE` on it first and only then decides, so two harvests of two
+// different crops into the same cold store cannot both see room only one of them has.
+//
+// The decision is taken in TypeScript against the locked row rather than as a conditional
+// UPDATE, which is what lets `depositStorage` clamp instead of failing. The CHECK stays
+// what it always was: the net, never the mechanism (ADR-0018).
 
 import { type Db, type Tx } from '../../lib/tx.js';
 import {
   ApiError,
   BuildingType,
+  STORAGE_RESOURCES,
+  type StorageResource,
   ValidationCode,
   capacityExceeded,
   notFound,
@@ -53,7 +62,7 @@ import {
   type FarmId,
   type PlayerId,
   type SlotUsage,
-  type StorageResource,
+  type StockItem,
   type StorageUsage,
 } from '../../shared/index.js';
 
@@ -79,46 +88,32 @@ export interface FarmCapacities {
   readonly machineSlots: SlotUsage;
   /** Worker home slots, aggregated over the live homes of the farm (GDD section 108). */
   readonly workerSlots: SlotUsage;
-  /** Silo occupancy in litres (GDD sections 27 and 83). */
-  readonly wheat: StorageUsage;
-  /** Wood store occupancy in cubic decimetres (GDD sections 136 and 138). */
-  readonly wood: StorageUsage;
+  /**
+   * Occupancy of every storage category (GDD sections 27, 83, 136 and 138). Total over
+   * the categories, so a category with no store built reads as zero of zero rather than
+   * being absent, which is what the interface has to draw before the first silo exists.
+   */
+  readonly storage: Readonly<Record<StorageResource, StorageUsage>>;
   /** Whether a workshop stands on the farm, which is what repair requires (GDD section 29). */
   readonly hasWorkshop: boolean;
   readonly buildingCount: number;
 }
 
-/** The columns of one fungible resource, and the code its overflow reports. */
-interface StorageColumns {
-  readonly stored: string;
-  readonly reserved: string;
-  readonly capacity: string;
-  readonly exceeded:
-    | typeof ValidationCode.SILO_CAPACITY_EXCEEDED
-    | typeof ValidationCode.WOOD_STORAGE_CAPACITY_EXCEEDED;
-  /** The building type that grants this capacity, named in the error details. */
-  readonly grantedBy: BuildingType;
-}
-
 /**
- * Closed table of column names. It is what makes the raw statements below safe: the only
- * text that is interpolated comes from here, and there is no path from a request to it.
+ * The building that grants each category, named in the error details so the interface
+ * can say which store is missing rather than only that one is.
+ *
+ * One building per category and never two: a store granting room to two categories would
+ * have to add up litres of unlike goods against one counter, or hand its capacity out
+ * twice. It mirrors `capacityResource` of the building catalogue, and the coherence test
+ * of shared/config cross checks the pair.
  */
-export const STORAGE_COLUMNS: Readonly<Record<StorageResource, StorageColumns>> = {
-  WHEAT_LITERS: {
-    stored: 'storedWheatLiters',
-    reserved: 'reservedWheatLiters',
-    capacity: 'capacityWheatLiters',
-    exceeded: ValidationCode.SILO_CAPACITY_EXCEEDED,
-    grantedBy: BuildingType.SILO,
-  },
-  WOOD_M3: {
-    stored: 'storedWoodDm3',
-    reserved: 'reservedWoodDm3',
-    capacity: 'capacityWoodDm3',
-    exceeded: ValidationCode.WOOD_STORAGE_CAPACITY_EXCEEDED,
-    grantedBy: BuildingType.WOOD_STORAGE,
-  },
+export const CATEGORY_GRANTED_BY: Readonly<Record<StorageResource, BuildingType>> = {
+  GRAIN_LITERS: BuildingType.SILO,
+  FORAGE_LITERS: BuildingType.HAY_BARN,
+  PRODUCE_LITERS: BuildingType.COLD_STORE,
+  INDUSTRIAL_LITERS: BuildingType.WAREHOUSE,
+  WOOD_M3: BuildingType.WOOD_STORAGE,
 };
 
 /** The row of a farm, as this module reads it. */
@@ -126,13 +121,24 @@ export interface FarmRow {
   readonly id: string;
   readonly playerId: string;
   readonly name: string;
-  readonly storedWheatLiters: number;
-  readonly reservedWheatLiters: number;
-  readonly capacityWheatLiters: number;
-  readonly storedWoodDm3: number;
-  readonly reservedWoodDm3: number;
-  readonly capacityWoodDm3: number;
   readonly createdAtGameMs: bigint;
+}
+
+/** The aggregate row of one storage category: capacity, occupancy and the CHECK. */
+export interface FarmStorageRow {
+  readonly farmId: string;
+  readonly category: StorageResource;
+  readonly storedUnits: number;
+  readonly reservedUnits: number;
+  readonly capacityUnits: number;
+}
+
+/** One pile of a fungible good, which is the breakdown behind the aggregate. */
+export interface FarmStockRow {
+  readonly farmId: string;
+  readonly item: StockItem;
+  readonly storedUnits: number;
+  readonly reservedUnits: number;
 }
 
 /** The row of a building, as this module reads it. */
@@ -157,13 +163,22 @@ const FARM_SELECT = {
   id: true,
   playerId: true,
   name: true,
-  storedWheatLiters: true,
-  reservedWheatLiters: true,
-  capacityWheatLiters: true,
-  storedWoodDm3: true,
-  reservedWoodDm3: true,
-  capacityWoodDm3: true,
   createdAtGameMs: true,
+} as const;
+
+const STORAGE_SELECT = {
+  farmId: true,
+  category: true,
+  storedUnits: true,
+  reservedUnits: true,
+  capacityUnits: true,
+} as const;
+
+const STOCK_SELECT = {
+  farmId: true,
+  item: true,
+  storedUnits: true,
+  reservedUnits: true,
 } as const;
 
 const BUILDING_SELECT = {
@@ -201,31 +216,48 @@ export function occupancyBp(storedUnits: number, reservedUnits: number, capacity
   return value < 0 ? 0 : value > 10_000 ? 10_000 : value;
 }
 
-/** The storage reading of one resource on a farm row. */
-export function storageUsageOf(farm: FarmRow, resource: StorageResource): StorageUsage {
-  if (resource === 'WHEAT_LITERS') {
-    return {
-      storedUnits: farm.storedWheatLiters,
-      reservedUnits: farm.reservedWheatLiters,
-      capacityUnits: farm.capacityWheatLiters,
-      occupancyBp: occupancyBp(
-        farm.storedWheatLiters,
-        farm.reservedWheatLiters,
-        farm.capacityWheatLiters,
-      ),
-    };
+/** An empty reading, which is what a category with no store built looks like. */
+export const EMPTY_STORAGE_USAGE: StorageUsage = {
+  storedUnits: 0,
+  reservedUnits: 0,
+  capacityUnits: 0,
+  occupancyBp: 0,
+};
+
+/** The storage reading of one category, from the aggregate rows of a farm. */
+export function storageUsageOf(
+  storage: readonly FarmStorageRow[],
+  category: StorageResource,
+): StorageUsage {
+  const row = storage.find((candidate) => candidate.category === category);
+  if (row === undefined) {
+    return EMPTY_STORAGE_USAGE;
   }
   return {
-    storedUnits: farm.storedWoodDm3,
-    reservedUnits: farm.reservedWoodDm3,
-    capacityUnits: farm.capacityWoodDm3,
-    occupancyBp: occupancyBp(farm.storedWoodDm3, farm.reservedWoodDm3, farm.capacityWoodDm3),
+    storedUnits: row.storedUnits,
+    reservedUnits: row.reservedUnits,
+    capacityUnits: row.capacityUnits,
+    occupancyBp: occupancyBp(row.storedUnits, row.reservedUnits, row.capacityUnits),
   };
 }
 
-/** Free units of a resource: capacity less what is stored and what is already committed. */
-export function freeStorageUnits(farm: FarmRow, resource: StorageResource): number {
-  const usage = storageUsageOf(farm, resource);
+/** Every category of a farm, so a reader never has to know which ones exist. */
+export function storageUsagesOf(
+  storage: readonly FarmStorageRow[],
+): Readonly<Record<StorageResource, StorageUsage>> {
+  const usages: Partial<Record<StorageResource, StorageUsage>> = {};
+  for (const category of STORAGE_RESOURCES) {
+    usages[category] = storageUsageOf(storage, category);
+  }
+  return usages as Record<StorageResource, StorageUsage>;
+}
+
+/** Free units of a category: capacity less what is stored and what is already committed. */
+export function freeStorageUnits(
+  storage: readonly FarmStorageRow[],
+  category: StorageResource,
+): number {
+  const usage = storageUsageOf(storage, category);
   const free = usage.capacityUnits - usage.storedUnits - usage.reservedUnits;
   return free > 0 ? free : 0;
 }
@@ -250,15 +282,18 @@ export function slotUsageOf(
 }
 
 /** The capacities of a farm, from rows already loaded. Pure, so a caller batches its reads. */
-export function capacitiesOf(farm: FarmRow, buildings: readonly BuildingRow[]): FarmCapacities {
+export function capacitiesOf(
+  farm: FarmRow,
+  buildings: readonly BuildingRow[],
+  storage: readonly FarmStorageRow[],
+): FarmCapacities {
   return {
     farmId: farm.id as FarmId,
     playerId: farm.playerId as PlayerId,
     name: farm.name,
     machineSlots: slotUsageOf(buildings, 'MACHINES'),
     workerSlots: slotUsageOf(buildings, 'WORKERS'),
-    wheat: storageUsageOf(farm, 'WHEAT_LITERS'),
-    wood: storageUsageOf(farm, 'WOOD_M3'),
+    storage: storageUsagesOf(storage),
     hasWorkshop: buildings.some((building) => building.type === BuildingType.WORKSHOP),
     buildingCount: buildings.length,
   };
@@ -295,6 +330,44 @@ export async function loadBuildings(
   });
 }
 
+/** The storage aggregates of a set of farms, in the canonical lock order. */
+export async function loadFarmStorage(
+  db: Db,
+  farmIds: readonly string[],
+): Promise<readonly FarmStorageRow[]> {
+  if (farmIds.length === 0) {
+    return [];
+  }
+  return db.farmStorage.findMany({
+    where: { farmId: { in: [...farmIds] } },
+    orderBy: [{ farmId: 'asc' }, { category: 'asc' }],
+    select: STORAGE_SELECT,
+  });
+}
+
+/**
+ * The piles of a set of farms, empty ones omitted.
+ *
+ * A pile with nothing in it has no row, which is what keeps the inventory of a farm
+ * proportional to what it actually holds rather than to the size of the catalogue.
+ */
+export async function loadFarmStock(
+  db: Db,
+  farmIds: readonly string[],
+): Promise<readonly FarmStockRow[]> {
+  if (farmIds.length === 0) {
+    return [];
+  }
+  return db.farmStock.findMany({
+    where: {
+      farmId: { in: [...farmIds] },
+      OR: [{ storedUnits: { gt: 0 } }, { reservedUnits: { gt: 0 } }],
+    },
+    orderBy: [{ farmId: 'asc' }, { item: 'asc' }],
+    select: STOCK_SELECT,
+  });
+}
+
 /**
  * A farm that belongs to the player, or the contract error that says why not.
  *
@@ -328,7 +401,8 @@ export async function farmCapacities(
 ): Promise<FarmCapacities> {
   const farm = await requireFarm(db, playerId, targetFarmId);
   const buildings = await loadBuildings(db, [farm.id]);
-  return capacitiesOf(farm, buildings);
+  const storage = await loadFarmStorage(db, [farm.id]);
+  return capacitiesOf(farm, buildings, storage);
 }
 
 /** The capacities of every farm of a player. Two statements, whatever the number of farms. */
@@ -337,14 +411,14 @@ export async function playerFarmCapacities(
   playerId: PlayerId,
 ): Promise<readonly FarmCapacities[]> {
   const farms = await loadFarms(db, playerId);
-  const buildings = await loadBuildings(
-    db,
-    farms.map((farm) => farm.id),
-  );
+  const farmIds = farms.map((farm) => farm.id);
+  const buildings = await loadBuildings(db, farmIds);
+  const storage = await loadFarmStorage(db, farmIds);
   return farms.map((farm) =>
     capacitiesOf(
       farm,
       buildings.filter((building) => building.farmId === farm.id),
+      storage.filter((row) => row.farmId === farm.id),
     ),
   );
 }
@@ -462,19 +536,20 @@ export interface StorageDepositOutcome {
 
 /** The error a full store reports, with the figures the interface renders. */
 export function storageCapacityError(
-  resource: StorageResource,
+  category: StorageResource,
   usage: StorageUsage,
   requiredUnits: number,
 ): ApiError {
-  const columns = STORAGE_COLUMNS[resource];
+  const grantedBy = CATEGORY_GRANTED_BY[category];
   if (usage.capacityUnits === 0) {
     return new ApiError(ValidationCode.STORAGE_REQUIRED, {
-      entityKind: columns.grantedBy,
+      entityKind: grantedBy,
       requiredUnits,
       availableUnits: 0,
     });
   }
-  return new ApiError(columns.exceeded, {
+  return new ApiError(ValidationCode.STORAGE_CAPACITY_EXCEEDED, {
+    entityKind: grantedBy,
     occupancy: usage.storedUnits + usage.reservedUnits,
     capacity: usage.capacityUnits,
     requiredUnits,
@@ -482,140 +557,202 @@ export function storageCapacityError(
   });
 }
 
-/** Reads back the row after a storage statement, so every outcome reports the truth. */
-async function readStorage(
-  db: Db,
+/**
+ * Takes the aggregate row of a category and holds it for the rest of the transaction.
+ *
+ * This is the whole concurrency design in one statement. The piles of `farm_stock` are
+ * per crop, so two harvests of two different crops touch two different pile rows and
+ * would never contend; the room they compete for is the category's. Locking the
+ * aggregate first makes them queue on the row that actually decides, which is what the
+ * single storage row of the previous schema did implicitly.
+ *
+ * The row always exists: the migration creates every category of every farm, and a farm
+ * is created with them, so this never has to insert under contention.
+ */
+async function lockStorage(
+  tx: Tx,
   targetFarmId: string,
-  resource: StorageResource,
+  category: StorageResource,
+): Promise<FarmStorageRow> {
+  const rows = await tx.$queryRaw<
+    { storedUnits: number; reservedUnits: number; capacityUnits: number }[]
+  >`SELECT "storedUnits", "reservedUnits", "capacityUnits"
+      FROM "farm_storage"
+     WHERE "farmId" = ${targetFarmId}::uuid AND "category" = ${category}::"StorageResource"
+       FOR UPDATE`;
+  const row = rows[0];
+  if (row === undefined) {
+    throw notFound('Farm', targetFarmId);
+  }
+  return {
+    farmId: targetFarmId,
+    category,
+    storedUnits: Number(row.storedUnits),
+    reservedUnits: Number(row.reservedUnits),
+    capacityUnits: Number(row.capacityUnits),
+  };
+}
+
+/** The reading of a locked row, as the callers report it. */
+function usageOfRow(row: FarmStorageRow): StorageUsage {
+  return {
+    storedUnits: row.storedUnits,
+    reservedUnits: row.reservedUnits,
+    capacityUnits: row.capacityUnits,
+    occupancyBp: occupancyBp(row.storedUnits, row.reservedUnits, row.capacityUnits),
+  };
+}
+
+/**
+ * Moves a pile by a signed delta and returns the aggregate as it stands afterwards.
+ *
+ * The write goes to `farm_stock`, and the trigger `farm_stock_storage_totals` carries the
+ * change into the aggregate. Reading the aggregate back rather than computing it here is
+ * deliberate: the trigger is the authority on the totals, and a second implementation of
+ * that sum is exactly how the two tables would come to disagree.
+ */
+async function moveStock(
+  tx: Tx,
+  targetFarmId: string,
+  item: StockItem,
+  category: StorageResource,
+  deltas: { readonly stored?: number; readonly reserved?: number },
 ): Promise<StorageUsage> {
-  const farm = await db.farm.findUniqueOrThrow({
-    where: { id: targetFarmId },
-    select: FARM_SELECT,
+  const stored = deltas.stored ?? 0;
+  const reserved = deltas.reserved ?? 0;
+  if (stored !== 0 || reserved !== 0) {
+    await tx.$executeRaw`
+      INSERT INTO "farm_stock" ("farmId", "item", "storedUnits", "reservedUnits")
+      VALUES (
+        ${targetFarmId}::uuid,
+        ${item}::"StockItem",
+        GREATEST(0, ${stored}::int),
+        GREATEST(0, ${reserved}::int)
+      )
+      ON CONFLICT ("farmId", "item") DO UPDATE
+        SET "storedUnits" = GREATEST(0, "farm_stock"."storedUnits" + ${stored}::int),
+            "reservedUnits" = GREATEST(0, "farm_stock"."reservedUnits" + ${reserved}::int)`;
+  }
+  const rows = await tx.$queryRaw<
+    { storedUnits: number; reservedUnits: number; capacityUnits: number }[]
+  >`SELECT "storedUnits", "reservedUnits", "capacityUnits"
+      FROM "farm_storage"
+     WHERE "farmId" = ${targetFarmId}::uuid AND "category" = ${category}::"StorageResource"`;
+  const row = rows[0];
+  if (row === undefined) {
+    throw notFound('Farm', targetFarmId);
+  }
+  return usageOfRow({
+    farmId: targetFarmId,
+    category,
+    storedUnits: Number(row.storedUnits),
+    reservedUnits: Number(row.reservedUnits),
+    capacityUnits: Number(row.capacityUnits),
   });
-  return storageUsageOf(farm, resource);
 }
 
 /**
  * Commits capacity for a harvest that is about to start (plan section 5.4, layer one).
  *
- * A conditional update whose row count is the decision: the reservation only applies if
- * the farm still has room for it, so two harvests assigned to the same silo cannot both
- * believe they fit. This is the layer that turns an overflow into an actionable rejection
- * at assignment time, which is the whole point of `reserved...` existing as a column.
+ * The lock on the aggregate is what makes the decision safe: two harvests assigned to the
+ * same store cannot both believe they fit, whatever crops they are. This is the layer
+ * that turns an overflow into an actionable rejection at assignment time, which is the
+ * whole point of the reserved units existing at all.
  */
 export async function reserveStorage(
   tx: Tx,
   targetFarmId: string,
-  resource: StorageResource,
+  item: StockItem,
+  category: StorageResource,
   units: number,
 ): Promise<StorageWriteOutcome> {
-  const columns = STORAGE_COLUMNS[resource];
   const amount = wholeUnits(units);
-  const affected = await tx.$executeRawUnsafe(
-    `UPDATE "farms" SET "${columns.reserved}" = "${columns.reserved}" + $2::int ` +
-      `WHERE "id" = $1::uuid ` +
-      `AND "${columns.stored}" + "${columns.reserved}" + $2::int <= "${columns.capacity}"`,
-    targetFarmId,
-    amount,
-  );
-  return { ok: affected === 1, usage: await readStorage(tx, targetFarmId, resource) };
+  const locked = await lockStorage(tx, targetFarmId, category);
+  const free = locked.capacityUnits - locked.storedUnits - locked.reservedUnits;
+  if (amount > free) {
+    return { ok: false, usage: usageOfRow(locked) };
+  }
+  return {
+    ok: true,
+    usage: await moveStock(tx, targetFarmId, item, category, { reserved: amount }),
+  };
 }
 
 /**
  * Gives back capacity a cancelled or completed task had committed.
  *
  * Floored at zero rather than refused: releasing more than was reserved is a bug of the
- * caller and leaving the column negative would take the farm out of the range its own
- * `CHECK` accepts, which would then block every later write for a reason unrelated to it.
+ * caller, and leaving the pile negative would take the aggregate out of the range its own
+ * CHECK accepts, which would then block every later write for a reason unrelated to it.
  */
 export async function releaseStorageReservation(
   tx: Tx,
   targetFarmId: string,
-  resource: StorageResource,
+  item: StockItem,
+  category: StorageResource,
   units: number,
 ): Promise<StorageUsage> {
-  const columns = STORAGE_COLUMNS[resource];
-  await tx.$executeRawUnsafe(
-    `UPDATE "farms" SET "${columns.reserved}" = GREATEST(0, "${columns.reserved}" - $2::int) ` +
-      `WHERE "id" = $1::uuid`,
-    targetFarmId,
-    wholeUnits(units),
-  );
-  return readStorage(tx, targetFarmId, resource);
+  await lockStorage(tx, targetFarmId, category);
+  return moveStock(tx, targetFarmId, item, category, { reserved: -wholeUnits(units) });
 }
 
 /**
  * Puts a harvest into the store, accepting what fits and reporting the rest as waste
  * (GDD sections 83 and 97, plan section 5.4, layer two).
  *
- * One bounded statement. `LEAST` is computed against the values the row held before the
- * update, because in PostgreSQL every column reference on the right hand side of a `SET`
- * reads the old row, so the result cannot exceed the capacity and cannot violate
- * `farms_stock_check` whatever the caller asked for. That property is not cosmetic: this
- * runs inside a completion job, and a constraint violation there would be retried for
- * ever.
+ * What is accepted is computed against the locked row, so it cannot exceed the capacity
+ * and cannot violate `farm_storage_check` whatever the caller asked for. That property is
+ * not cosmetic: this runs inside a completion job, and a constraint violation there would
+ * be retried for ever.
  *
- * `releaseReservedUnits` is what the task reserved when it was assigned. It is released in
- * the same statement so that the room the harvest reserved for itself is exactly the room
- * it may now occupy.
+ * `releaseReservedUnits` is what the task reserved when it was assigned. It is released
+ * before the room is measured, so the room the harvest reserved for itself is exactly the
+ * room it may now occupy.
  */
 export async function depositStorage(
   tx: Tx,
   targetFarmId: string,
-  resource: StorageResource,
+  item: StockItem,
+  category: StorageResource,
   units: number,
   options: { readonly releaseReservedUnits?: number } = {},
 ): Promise<StorageDepositOutcome> {
-  const columns = STORAGE_COLUMNS[resource];
   const amount = wholeUnits(units);
   const release = wholeUnits(options.releaseReservedUnits ?? 0);
-
-  const rows = await tx.$queryRawUnsafe<{ storedBefore: number; storedAfter: number }[]>(
-    `WITH "before" AS (SELECT "id", "${columns.stored}" AS "storedBefore" FROM "farms" WHERE "id" = $1::uuid) ` +
-      `UPDATE "farms" f SET ` +
-      `"${columns.reserved}" = GREATEST(0, f."${columns.reserved}" - $3::int), ` +
-      `"${columns.stored}" = f."${columns.stored}" + LEAST($2::int, GREATEST(0, ` +
-      `f."${columns.capacity}" - f."${columns.stored}" - GREATEST(0, f."${columns.reserved}" - $3::int))) ` +
-      `FROM "before" b WHERE f."id" = b."id" ` +
-      `RETURNING b."storedBefore" AS "storedBefore", f."${columns.stored}" AS "storedAfter"`,
-    targetFarmId,
-    amount,
-    release,
-  );
-  const row = rows[0];
-  if (row === undefined) {
-    throw notFound('Farm', targetFarmId);
-  }
-  const accepted = Number(row.storedAfter) - Number(row.storedBefore);
-  return {
-    acceptedUnits: accepted,
-    wastedUnits: amount - accepted,
-    usage: await readStorage(tx, targetFarmId, resource),
-  };
+  const locked = await lockStorage(tx, targetFarmId, category);
+  const reservedAfter = Math.max(0, locked.reservedUnits - release);
+  const room = Math.max(0, locked.capacityUnits - locked.storedUnits - reservedAfter);
+  const accepted = Math.min(amount, room);
+  const usage = await moveStock(tx, targetFarmId, item, category, {
+    stored: accepted,
+    reserved: -release,
+  });
+  return { acceptedUnits: accepted, wastedUnits: amount - accepted, usage };
 }
 
 /**
  * Takes stock out of the store for a sale (GDD section 123).
  *
- * A conditional update with a row count, for the same reason as `charge` in
- * `lib/ledger.ts`: two concurrent sales of the same grain must not both succeed, and the
- * row they both have to write is the one that decides.
+ * Decided against the pile and not against the category: selling grain means selling one
+ * crop's grain, and a farm holding barley must not be able to sell wheat it does not have.
  */
 export async function withdrawStorage(
   tx: Tx,
   targetFarmId: string,
-  resource: StorageResource,
+  item: StockItem,
+  category: StorageResource,
   units: number,
 ): Promise<StorageWriteOutcome> {
-  const columns = STORAGE_COLUMNS[resource];
   const amount = wholeUnits(units);
-  const affected = await tx.$executeRawUnsafe(
-    `UPDATE "farms" SET "${columns.stored}" = "${columns.stored}" - $2::int ` +
-      `WHERE "id" = $1::uuid AND "${columns.stored}" >= $2::int`,
-    targetFarmId,
-    amount,
-  );
-  return { ok: affected === 1, usage: await readStorage(tx, targetFarmId, resource) };
+  await lockStorage(tx, targetFarmId, category);
+  const affected = await tx.$executeRaw`
+    UPDATE "farm_stock"
+       SET "storedUnits" = "storedUnits" - ${amount}::int
+     WHERE "farmId" = ${targetFarmId}::uuid
+       AND "item" = ${item}::"StockItem"
+       AND "storedUnits" >= ${amount}::int`;
+  const usage = await moveStock(tx, targetFarmId, item, category, {});
+  return { ok: affected === 1, usage };
 }
 
 /** A quantity as the stored unit demands: a non negative whole number (ADR-0013). */

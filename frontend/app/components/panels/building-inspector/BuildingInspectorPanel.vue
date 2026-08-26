@@ -122,7 +122,10 @@ const storage = computed<{
   if (resource === null) {
     return null;
   }
-  const usage = resource === 'WHEAT_LITERS' ? holding.wheat : holding.wood;
+  const usage = holding.storage.find((row) => row.category === resource)?.usage;
+  if (usage === undefined) {
+    return null;
+  }
   const units = STORAGE_RESOURCE_UNITS[resource];
   const valueBp =
     usage.capacityUnits === 0 ? 0 : Math.round((usage.storedUnits / usage.capacityUnits) * 10_000);

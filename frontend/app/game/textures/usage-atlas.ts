@@ -12,6 +12,20 @@
 // germinating, vertical green strokes for growing (with the progress carried by a
 // tint, see `growthTint`), gold with ears for ready, stubble for harvested.
 //
+// TELLING SIXTY TWO CROPS APART. Four of the eight states show no plant at all —
+// virgin, plowed, cultivated and seeded are soil, and a seed does not read at
+// sixteen pixels — so only the other four vary. They vary by *silhouette* and not
+// by crop: seven looks, deliberately coarser than the ten families, because what
+// the canvas has to convey at this size is the shape of the plant. Which crop it
+// is comes from the tint, which already travels per cell.
+//
+// The arithmetic is why this is affordable. Sixty two crops times eight states
+// would be 496 tiles; four states times six extra looks is 24, on top of the
+// fifteen that already exist. The fifteen are kept exactly as they were and now
+// stand for the spike look, so no tile is repainted and no existing index moves:
+// the new ones are appended, which is what preserves the index contract this
+// file's callers rely on.
+//
 // The tiles are translucent wherever the terrain has to stay visible, because a
 // player has to be able to tell that a field sits on grass. Only the states that
 // replace the surface, that is from plowed onwards, are opaque: a plowed field is
@@ -30,7 +44,7 @@ import {
   type TilesetGeometry,
 } from './pixels';
 import { TERRAIN_TILE_PX } from './terrain-atlas';
-import { CROP_CYCLE_STATES, type CropCycleState } from '~/shared/domain/enums';
+import { CROP_CYCLE_STATES, CROP_LOOKS, CropCycleState, CropLook } from '~/shared/domain/enums';
 
 /** Side of a usage tile. The two atlases share their geometry by construction. */
 export const USAGE_TILE_PX = TERRAIN_TILE_PX;
@@ -61,6 +75,33 @@ export const UsageTile = {
   PENDING: 'PENDING',
   /** Padding of the atlas, painted loud so an off by one is visible. */
   MISSING: 'MISSING',
+
+  // The four states that show a plant, once per look other than `SPIKE`, which the
+  // tiles above already are. Named `<LOOK>_<STATE>` and appended, never inserted.
+  POD_GERMINATING: 'POD_GERMINATING',
+  POD_GROWING: 'POD_GROWING',
+  POD_READY_TO_HARVEST: 'POD_READY_TO_HARVEST',
+  POD_HARVESTED: 'POD_HARVESTED',
+  HEAD_GERMINATING: 'HEAD_GERMINATING',
+  HEAD_GROWING: 'HEAD_GROWING',
+  HEAD_READY_TO_HARVEST: 'HEAD_READY_TO_HARVEST',
+  HEAD_HARVESTED: 'HEAD_HARVESTED',
+  TUBER_GERMINATING: 'TUBER_GERMINATING',
+  TUBER_GROWING: 'TUBER_GROWING',
+  TUBER_READY_TO_HARVEST: 'TUBER_READY_TO_HARVEST',
+  TUBER_HARVESTED: 'TUBER_HARVESTED',
+  ROSETTE_GERMINATING: 'ROSETTE_GERMINATING',
+  ROSETTE_GROWING: 'ROSETTE_GROWING',
+  ROSETTE_READY_TO_HARVEST: 'ROSETTE_READY_TO_HARVEST',
+  ROSETTE_HARVESTED: 'ROSETTE_HARVESTED',
+  BUSH_GERMINATING: 'BUSH_GERMINATING',
+  BUSH_GROWING: 'BUSH_GROWING',
+  BUSH_READY_TO_HARVEST: 'BUSH_READY_TO_HARVEST',
+  BUSH_HARVESTED: 'BUSH_HARVESTED',
+  BLOOM_GERMINATING: 'BLOOM_GERMINATING',
+  BLOOM_GROWING: 'BLOOM_GROWING',
+  BLOOM_READY_TO_HARVEST: 'BLOOM_READY_TO_HARVEST',
+  BLOOM_HARVESTED: 'BLOOM_HARVESTED',
 } as const;
 export type UsageTile = (typeof UsageTile)[keyof typeof UsageTile];
 
@@ -85,10 +126,49 @@ export const USAGE_TILE_ORDER: readonly UsageTile[] = [
   UsageTile.FOREST_PLOT,
   UsageTile.PENDING,
   UsageTile.MISSING,
+  // Appended, so every index above keeps the value it had.
+  UsageTile.POD_GERMINATING,
+  UsageTile.POD_GROWING,
+  UsageTile.POD_READY_TO_HARVEST,
+  UsageTile.POD_HARVESTED,
+  UsageTile.HEAD_GERMINATING,
+  UsageTile.HEAD_GROWING,
+  UsageTile.HEAD_READY_TO_HARVEST,
+  UsageTile.HEAD_HARVESTED,
+  UsageTile.TUBER_GERMINATING,
+  UsageTile.TUBER_GROWING,
+  UsageTile.TUBER_READY_TO_HARVEST,
+  UsageTile.TUBER_HARVESTED,
+  UsageTile.ROSETTE_GERMINATING,
+  UsageTile.ROSETTE_GROWING,
+  UsageTile.ROSETTE_READY_TO_HARVEST,
+  UsageTile.ROSETTE_HARVESTED,
+  UsageTile.BUSH_GERMINATING,
+  UsageTile.BUSH_GROWING,
+  UsageTile.BUSH_READY_TO_HARVEST,
+  UsageTile.BUSH_HARVESTED,
+  UsageTile.BLOOM_GERMINATING,
+  UsageTile.BLOOM_GROWING,
+  UsageTile.BLOOM_READY_TO_HARVEST,
+  UsageTile.BLOOM_HARVESTED,
 ];
 
-/** Four columns, as in the terrain atlas, so both are read the same way. */
-export const USAGE_ATLAS_COLUMNS = 4;
+/**
+ * States that show a plant, and therefore vary with the look. The other four are
+ * soil and keep one tile each.
+ */
+export const LOOK_VARIANT_STATES: readonly CropCycleState[] = [
+  CropCycleState.GERMINATING,
+  CropCycleState.GROWING,
+  CropCycleState.READY_TO_HARVEST,
+  CropCycleState.HARVESTED,
+];
+
+/**
+ * Eight columns. It was four when the atlas held fifteen tiles; with thirty nine it
+ * keeps the sheet closer to square, which is what a texture wants.
+ */
+export const USAGE_ATLAS_COLUMNS = 8;
 
 /** Geometry of the atlas. The last slot is padding and is painted as `MISSING`. */
 export const USAGE_ATLAS_GEOMETRY: TilesetGeometry = extrudedGeometry(
@@ -118,22 +198,34 @@ export function usageTileFromIndex(index: number): UsageTile {
 }
 
 /**
- * The tile of a state of the crop cycle. The eight states of the machine share
- * their names with eight tiles of the atlas, and this function is the single place
- * that relies on it, so a state added to the domain fails here and not in a silent
- * fallback.
+ * The tile of a state of the crop cycle, drawn with the silhouette of a look.
+ *
+ * The four states that show soil answer with the tile that shares their name, whatever
+ * the look; the four that show a plant answer with `<LOOK>_<STATE>`, and `SPIKE` answers
+ * with the base tiles, which is what keeps the fifteen original ones in place.
+ *
+ * This is the single place that relies on the naming, so a state or a look added to the
+ * domain fails here and not in a silent fallback.
  */
-export function usageTileForCropState(state: CropCycleState): UsageTile {
-  const tile = USAGE_TILE_ORDER.find((candidate) => candidate === state);
+export function usageTileForCropState(
+  state: CropCycleState,
+  look: CropLook = CropLook.SPIKE,
+): UsageTile {
+  const varies = LOOK_VARIANT_STATES.includes(state);
+  const name = varies && look !== CropLook.SPIKE ? `${look}_${state}` : state;
+  const tile = USAGE_TILE_ORDER.find((candidate) => candidate === name);
   if (tile === undefined) {
-    throw new RangeError(`Crop cycle state ${state} has no usage tile`);
+    throw new RangeError(`Crop cycle state ${state} with look ${look} has no usage tile`);
   }
   return tile;
 }
 
-/** Index of the tile of a state of the crop cycle. */
-export function usageTileIndexForCropState(state: CropCycleState): number {
-  return usageTileIndex(usageTileForCropState(state));
+/** Index of the tile of a state of the crop cycle, for a look. */
+export function usageTileIndexForCropState(
+  state: CropCycleState,
+  look: CropLook = CropLook.SPIKE,
+): number {
+  return usageTileIndex(usageTileForCropState(state, look));
 }
 
 // ---------------------------------------------------------------------------
@@ -256,10 +348,210 @@ function paintHatch(tile: PixelBuffer, colour: number, alpha: number, period: nu
   }
 }
 
+// ---------------------------------------------------------------------------
+// Silhouettes of the six looks other than the spike
+// ---------------------------------------------------------------------------
+//
+// Each one draws the same four states as the spike does — a sprout, a plant in
+// growth, the harvestable organ and what is left after cutting — with the shape
+// that tells the family apart at sixteen pixels. They are deliberately simple:
+// what carries the identity of the crop is the tint, and a silhouette that tried
+// to be a portrait would only turn into noise.
+
+/** Two paired sprouts per station, which is how a seedling reads before it has form. */
+function paintSprouts(tile: PixelBuffer, colour: number, period: number): void {
+  for (let x = 3; x < tile.width - 2; x += period) {
+    const base = tile.height - 6;
+    setPixel(tile, x, base, colour);
+    setPixel(tile, x, base - 1, colour);
+    setPixel(tile, x - 1, base - 2, colour);
+    setPixel(tile, x + 1, base - 2, colour);
+  }
+}
+
+/** Pulses: a low bush with pods hanging off its sides. */
+function paintPods(tile: PixelBuffer, stem: number, pod: number, period: number): void {
+  for (let x = 4; x < tile.width - 3; x += period) {
+    const top = tile.height - 14;
+    for (let y = top; y < tile.height - 3; y += 1) {
+      setPixel(tile, x, y, stem);
+    }
+    for (const offset of [3, 6, 9]) {
+      setPixel(tile, x - 2, top + offset, pod);
+      setPixel(tile, x - 3, top + offset + 1, pod);
+      setPixel(tile, x + 2, top + offset + 1, pod);
+      setPixel(tile, x + 3, top + offset + 2, pod);
+    }
+  }
+}
+
+/** Oilseeds: one tall stem carrying a single round head. */
+function paintOilHeads(tile: PixelBuffer, stem: number, head: number, period: number): void {
+  for (let x = 5; x < tile.width - 4; x += period) {
+    const crown = 6;
+    for (let y = crown + 2; y < tile.height - 3; y += 1) {
+      setPixel(tile, x, y, stem);
+    }
+    for (let dy = -2; dy <= 2; dy += 1) {
+      for (let dx = -2; dx <= 2; dx += 1) {
+        if (Math.abs(dx) + Math.abs(dy) <= 3) {
+          setPixel(tile, x + dx, crown + dy, head);
+        }
+      }
+    }
+  }
+}
+
+/** Roots and bulbs: foliage over a mounded ridge, with the organ under the soil. */
+function paintBulbs(tile: PixelBuffer, leaf: number, root: number, period: number): void {
+  for (let x = 4; x < tile.width - 3; x += period) {
+    const soil = tile.height - 8;
+    // The mound, which is what says the crop is under the surface and not on it.
+    for (let dx = -3; dx <= 3; dx += 1) {
+      setPixel(tile, x + dx, soil, root);
+      if (Math.abs(dx) <= 2) {
+        setPixel(tile, x + dx, soil + 1, root);
+      }
+    }
+    // The leaves above it.
+    for (const dx of [-2, 0, 2]) {
+      setPixel(tile, x + dx, soil - 2, leaf);
+      setPixel(tile, x + dx, soil - 3, leaf);
+    }
+    setPixel(tile, x, soil - 4, leaf);
+  }
+}
+
+/** Leafy crops: a rosette hugging the ground, drawn as a squat lozenge. */
+function paintRosette(tile: PixelBuffer, leaf: number, heart: number, period: number): void {
+  for (let y = 5; y < tile.height - 4; y += period) {
+    for (let x = 5; x < tile.width - 4; x += period) {
+      for (let dy = -3; dy <= 3; dy += 1) {
+        const width = 3 - Math.abs(dy);
+        for (let dx = -width; dx <= width; dx += 1) {
+          setPixel(tile, x + dx, y + dy, leaf);
+        }
+      }
+      setPixel(tile, x, y, heart);
+    }
+  }
+}
+
+/** Fruiting and industrial crops: a bush with fruit hanging in it. */
+function paintFruits(tile: PixelBuffer, leaf: number, fruit: number, period: number): void {
+  for (let y = 6; y < tile.height - 4; y += period) {
+    for (let x = 6; x < tile.width - 5; x += period) {
+      for (let dy = -3; dy <= 3; dy += 1) {
+        const width = 4 - Math.abs(dy);
+        for (let dx = -width; dx <= width; dx += 1) {
+          setPixel(tile, x + dx, y + dy, leaf);
+        }
+      }
+      setPixel(tile, x - 1, y, fruit);
+      setPixel(tile, x, y, fruit);
+      setPixel(tile, x, y + 1, fruit);
+      setPixel(tile, x + 2, y - 1, fruit);
+    }
+  }
+}
+
+/** Flowers and herbs: slender stems with a blossom on top. */
+function paintBlooms(tile: PixelBuffer, stem: number, petal: number, period: number): void {
+  for (let x = 4; x < tile.width - 3; x += period) {
+    const crown = 5 + ((x / period) % 2 === 0 ? 0 : 3);
+    for (let y = crown + 2; y < tile.height - 3; y += 1) {
+      setPixel(tile, x, y, stem);
+    }
+    setPixel(tile, x, crown, petal);
+    setPixel(tile, x - 1, crown, petal);
+    setPixel(tile, x + 1, crown, petal);
+    setPixel(tile, x, crown - 1, petal);
+    setPixel(tile, x, crown + 1, petal);
+  }
+}
+
+/** Stubble left by a look, which is what the ground shows once the crop is cut. */
+function paintLookStubble(tile: PixelBuffer, look: CropLook, colour: number): void {
+  if (look === CropLook.TUBER) {
+    // A lifted root leaves turned soil, not straw: broken ridges instead of stems.
+    for (let y = 4; y < tile.height - 3; y += 6) {
+      for (let x = 2; x < tile.width - 2; x += 1) {
+        if ((x + y) % 5 !== 0) {
+          setPixel(tile, x, y, colour);
+        }
+      }
+    }
+    return;
+  }
+  paintStubble(tile, colour);
+}
+
+/** Paints one of the four plant states of a look. */
+function paintLookState(buffer: PixelBuffer, look: CropLook, state: CropCycleState): void {
+  const crop = PALETTE.crop[state];
+  const shades = PALETTE.cropLook[look];
+  fillRect(buffer, 0, 0, buffer.width, buffer.height, crop.soil);
+
+  if (state === CropCycleState.HARVESTED) {
+    paintLookStubble(buffer, look, crop.mark);
+    return;
+  }
+  if (state === CropCycleState.GERMINATING) {
+    paintFurrows(buffer, crop.markAlt, 8, 2);
+    paintSprouts(buffer, shades.mark, 6);
+    return;
+  }
+  // Growing and ready share the silhouette; ready is the one that carries the
+  // harvestable organ, in the accent shade, and growing draws it in leaf.
+  const organ = state === CropCycleState.READY_TO_HARVEST ? shades.accent : shades.markAlt;
+  switch (look) {
+    case CropLook.POD:
+      paintPods(buffer, shades.mark, organ, 8);
+      break;
+    case CropLook.HEAD:
+      paintOilHeads(buffer, shades.mark, organ, 10);
+      break;
+    case CropLook.TUBER:
+      paintBulbs(buffer, shades.mark, organ, 8);
+      break;
+    case CropLook.ROSETTE:
+      paintRosette(buffer, shades.mark, organ, 9);
+      break;
+    case CropLook.BUSH:
+      paintFruits(buffer, shades.mark, organ, 11);
+      break;
+    case CropLook.BLOOM:
+    default:
+      paintBlooms(buffer, shades.mark, organ, 6);
+      break;
+  }
+}
+
+/** The look and state a variant tile stands for, or null when it is not one. */
+function lookVariantOf(tile: UsageTile): { look: CropLook; state: CropCycleState } | null {
+  for (const look of CROP_LOOKS) {
+    if (look === CropLook.SPIKE) {
+      continue;
+    }
+    for (const state of LOOK_VARIANT_STATES) {
+      if (tile === `${look}_${state}`) {
+        return { look, state };
+      }
+    }
+  }
+  return null;
+}
+
 /** Paints one tile of the usage atlas into a fresh buffer. */
 export function paintUsageTile(tile: UsageTile): PixelBuffer {
   const buffer = createPixelBuffer(USAGE_TILE_PX, USAGE_TILE_PX);
   const crop = PALETTE.crop;
+
+  const variant = lookVariantOf(tile);
+  if (variant !== null) {
+    paintLookState(buffer, variant.look, variant.state);
+    return buffer;
+  }
 
   switch (tile) {
     case UsageTile.EMPTY:

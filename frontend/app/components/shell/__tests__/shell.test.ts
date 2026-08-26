@@ -62,7 +62,7 @@ describe('la barra superior', () => {
       'Multiplicador',
       'Plantilla',
       'Maquinaria',
-      'Silo',
+      'Almacen',
       'Consumo',
     ]) {
       expect(text).toContain(label);

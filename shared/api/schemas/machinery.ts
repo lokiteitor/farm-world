@@ -110,7 +110,16 @@ export const operationRequirementSchema = z.strictObject({
   requiredImplement: z.enum(MachineType).nullable(),
   requiredPossession: z.array(z.enum(MachineType)),
   requiresCrop: z.boolean(),
+  /**
+   * Storage category the operation deposits into, or null.
+   *
+   * Null for a harvest as well, and that is not an omission: the category a harvest needs
+   * is the one of the crop standing on the field, so it is not a property of the operation
+   * at all. `storageFromCrop` is what says so.
+   */
   requiresStorage: z.enum(StorageResource).nullable(),
+  /** Whether the store this operation needs is decided by the crop being worked. */
+  storageFromCrop: z.boolean(),
 });
 export type OperationRequirementDto = z.infer<typeof operationRequirementSchema>;
 

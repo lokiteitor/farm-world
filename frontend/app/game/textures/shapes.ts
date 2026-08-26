@@ -66,6 +66,9 @@ const BUILDING_LABELS: Readonly<Record<BuildingType, string>> = {
   WORKER_HOME: 'vivienda',
   WORKSHOP: 'taller',
   WOOD_STORAGE: 'almacen de madera',
+  HAY_BARN: 'henil',
+  COLD_STORE: 'camara fria',
+  WAREHOUSE: 'almacen',
 };
 
 const MACHINE_LABELS: Readonly<Record<MachineType, string>> = {
@@ -127,7 +130,11 @@ export interface SpriteSpec {
 export const MACHINE_SPRITE = { width: 64, height: 48 } as const;
 
 /** Wheels of a powered machine: large at the rear, small at the front, with tread and rims. */
-function drawPoweredWheels(graphics: Phaser.GameObjects.Graphics, wheel: number, rim: number): void {
+function drawPoweredWheels(
+  graphics: Phaser.GameObjects.Graphics,
+  wheel: number,
+  rim: number,
+): void {
   // Heavy rear wheels
   graphics.fillStyle(0x181a1d, 1);
   graphics.fillRoundedRect(10, 4, 15, 10, 2);
@@ -790,7 +797,7 @@ function drawBuilding(graphics: Phaser.GameObjects.Graphics, type: BuildingType)
       graphics.fillRoundedRect(6, 6, width - 12, height - 12, 4);
       graphics.fillStyle(0xd4ac0d, 0.4); // scattered wood chips
       for (let sc = 0; sc < 24; sc += 1) {
-        graphics.fillRect(14 + (sc * 37) % (width - 28), 16 + (sc * 43) % (height - 32), 4, 3);
+        graphics.fillRect(14 + ((sc * 37) % (width - 28)), 16 + ((sc * 43) % (height - 32)), 4, 3);
       }
 
       // Open timber shed roof with rafters & overhang

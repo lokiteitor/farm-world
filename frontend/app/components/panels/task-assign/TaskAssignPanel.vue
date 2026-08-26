@@ -36,13 +36,19 @@
 // The order of the refusals is `shared/assignment.ts`, which transcribes
 // `backend/src/modules/tasks/assignment.ts` (ADR-0048). It is not repeated here.
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
-import { CROP_LABELS, OPERATION_LABELS } from '~/components/panels/legend/vocabulary';
+import {
+  CROP_FAMILY_LABELS,
+  OPERATION_LABELS,
+  SEASON_LABELS,
+  STORAGE_CATEGORY_LABELS,
+} from '~/components/panels/legend/vocabulary';
 import { labelOfMachineType } from '~/components/panels/machinery/machineryPresentation';
 import {
   assignmentBlockingCode,
   machineCombinations,
   operationsForField,
   reservedMachineTypes,
+  cropBlockingCode,
   requirementOf,
   unitLabel,
   unitsForAssignment,
@@ -51,6 +57,7 @@ import {
   type TargetSituation,
 } from '~/components/panels/shared/assignment';
 import { composeArea } from '~/components/panels/shared/forestPresentation';
+import { cropGroups, firstSowableCrop } from '~/components/panels/task-assign/cropChoices';
 import { buildEstimateBody } from '~/components/panels/task-assign/request';
 import UiBadge from '~/components/ui/UiBadge.vue';
 import UiButton from '~/components/ui/UiButton.vue';
@@ -59,10 +66,12 @@ import UiEmptyState from '~/components/ui/UiEmptyState.vue';
 import UiStat from '~/components/ui/UiStat.vue';
 import { useApi } from '~/composables/useApi';
 import { useFormatting } from '~/composables/useFormatting';
+import { useGameClock } from '~/composables/useGameClock';
 import { useShellUi } from '~/composables/useShellUi';
 import { isApiClientError } from '~/net/errors';
 import {
   CROPS,
+  CROP_FAMILIES,
   STORAGE_RESOURCE_UNITS,
   TaskOperation,
   VALIDATION_MESSAGES,
@@ -70,8 +79,11 @@ import {
   cellKey,
   fromWireGameMs,
   fromWireMoney,
+  seasonAtGameMs,
   type CellCoordWire,
+  type CropFamily,
   type CropId,
+  type StorageResource,
   type TaskEstimateReply,
   type ValidationCode,
 } from '~/shared/index';
@@ -104,6 +116,7 @@ const selection = useSelectionStore();
 const shell = useShellUi();
 const api = useApi();
 const format = useFormatting();
+const clock = useGameClock();
 
 const failure = ref('');
 const estimate = ref<TaskEstimateReply | null>(null);
@@ -219,12 +232,34 @@ const selectedWorkerId = computed<string>({
 // Crop and destination
 // ---------------------------------------------------------------------------
 
-const cropIds = Object.keys(CROPS) as readonly CropId[];
+/**
+ * La estacion vigente, derivada del reloj con la misma funcion pura que usa el servidor.
+ *
+ * No viaja por la API: el cliente ya extrapola `gameMs`, asi que preguntar por la estacion
+ * seria pedir algo que ya se puede calcular, y dos implementaciones de eso es como el panel
+ * y el servidor acaban discrepando.
+ */
+const season = computed(() => seasonAtGameMs(clock.gameMs.value));
+
+/** Filtro de familia: con sesenta y dos cultivos, elegir empieza por reducir. */
+const familyFilter = ref<CropFamily | null>(null);
+const cropOptions = computed(() => cropGroups(season.value, familyFilter.value));
+
 const requiresCrop = computed(() =>
   effectiveOperation.value === null ? false : requirementOf(effectiveOperation.value).requiresCrop,
 );
-const chosenCropId = ref<CropId | null>(cropIds[0] ?? null);
+// Por omision, el primero que se pueda sembrar hoy: proponer uno fuera de temporada seria
+// ofrecer algo que el servidor va a rechazar.
+const chosenCropId = ref<CropId | null>(firstSowableCrop(season.value));
 const cropId = computed<CropId | null>(() => (requiresCrop.value ? chosenCropId.value : null));
+/** La entrada del catalogo elegida, para la ficha que acompania al selector. */
+const chosenCrop = computed(() => (cropId.value === null ? null : CROPS[cropId.value]));
+/** El motivo por el que el cultivo elegido no se puede sembrar, o cadena vacia. */
+const cropReason = computed(() =>
+  effectiveOperation.value === null
+    ? ''
+    : reasonOf(cropBlockingCode(effectiveOperation.value, cropId.value, season.value)),
+);
 const selectedCropId = computed<string>({
   get: () => chosenCropId.value ?? '',
   set: (value) => {
@@ -239,8 +274,26 @@ const requiresStorage = computed(() =>
 );
 const destinationFarmId = computed(() => (requiresStorage.value === null ? null : farmId.value));
 
+/**
+ * The storage category the task will deposit into.
+ *
+ * A harvest does not fix one: the crop standing on the field does, which is why the
+ * requirement table answers `FROM_CROP` and this resolves it here.
+ */
+const storageCategory = computed<StorageResource | null>(() => {
+  const required = requiresStorage.value;
+  if (required === null) {
+    return null;
+  }
+  if (required !== 'FROM_CROP') {
+    return required;
+  }
+  const crop = field.value?.cropId ?? null;
+  return crop === null ? null : CROPS[crop].storageResource;
+});
+
 const storageSituation = computed(() => {
-  const resource = requiresStorage.value;
+  const resource = storageCategory.value;
   if (resource === null || destinationFarmId.value === null) {
     return null;
   }
@@ -428,7 +481,7 @@ onBeforeUnmount(() => {
 // ---------------------------------------------------------------------------
 
 const productionUnit = computed(() => {
-  const resource = requiresStorage.value;
+  const resource = storageCategory.value;
   return resource === null ? null : STORAGE_RESOURCE_UNITS[resource];
 });
 
@@ -593,14 +646,67 @@ async function submit(): Promise<void> {
       </section>
 
       <!-- 4. The crop, only when the catalogue says the effectiveOperation sows. -->
-      <label v-if="requiresCrop" class="fw-assign__field">
-        <span>Cultivo</span>
-        <select v-model="selectedCropId">
-          <option v-for="option in cropIds" :key="option" :value="option">
-            {{ CROP_LABELS[option] }}
-          </option>
-        </select>
-      </label>
+      <template v-if="requiresCrop">
+        <div class="fw-assign__families">
+          <UiButton
+            size="sm"
+            :variant="familyFilter === null ? 'primary' : 'ghost'"
+            @click="familyFilter = null"
+          >
+            Todos
+          </UiButton>
+          <UiButton
+            v-for="family in CROP_FAMILIES"
+            :key="family"
+            size="sm"
+            :variant="familyFilter === family ? 'primary' : 'ghost'"
+            @click="familyFilter = family"
+          >
+            {{ CROP_FAMILY_LABELS[family] }}
+          </UiButton>
+        </div>
+        <label class="fw-assign__field">
+          <span>Cultivo</span>
+          <select v-model="selectedCropId">
+            <optgroup v-for="group in cropOptions" :key="group.family" :label="group.label">
+              <option
+                v-for="option in group.options"
+                :key="option.cropId"
+                :value="option.cropId"
+                :disabled="!option.usable"
+              >
+                {{ option.label
+                }}<template v-if="!option.usable">
+                  — fuera de temporada ({{ option.seasons }})</template
+                >
+              </option>
+            </optgroup>
+          </select>
+        </label>
+        <p class="fw-assign__muted">
+          Estacion: {{ SEASON_LABELS[season] }}. Un cultivo fuera de su ventana aparece pero no se
+          puede sembrar; el ciclo que se pase del final de la ventana no se penaliza.
+        </p>
+        <p v-if="cropReason !== ''" class="fw-assign__blocked">{{ cropReason }}</p>
+        <dl v-if="chosenCrop !== null" class="fw-assign__crop">
+          <div>
+            <dt>Ciclo</dt>
+            <dd>{{ chosenCrop.growthDurationGameHours }} h</dd>
+          </div>
+          <div>
+            <dt>Rendimiento</dt>
+            <dd>{{ chosenCrop.baseYieldPerCellLiters }} L/celda</dd>
+          </div>
+          <div>
+            <dt>Precio</dt>
+            <dd>{{ format.formatMoney(chosenCrop.sellPricePerLiter) }} / L</dd>
+          </div>
+          <div>
+            <dt>Almacen</dt>
+            <dd>{{ STORAGE_CATEGORY_LABELS[chosenCrop.storageResource] }}</dd>
+          </div>
+        </dl>
+      </template>
 
       <!-- The preview of §104: duration and cost, from the estimate route. -->
       <section class="fw-assign__preview">
@@ -789,6 +895,28 @@ async function submit(): Promise<void> {
   margin: 0;
   color: var(--fw-warning, #c9a227);
   font-size: var(--fw-font-size-sm, 12px);
+}
+
+.fw-assign__families {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.fw-assign__crop {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--fw-gap-lg, 16px);
+  margin: 0;
+  font-size: var(--fw-font-size-sm, 12px);
+}
+
+.fw-assign__crop dt {
+  color: var(--fw-text-muted, #8b949e);
+}
+
+.fw-assign__crop dd {
+  margin: 0;
 }
 
 .fw-assign__blockers {

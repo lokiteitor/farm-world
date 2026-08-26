@@ -560,7 +560,7 @@ export async function applyFieldOperation(
     throw new ApiError(ValidationCode.FIELD_CROP_NOT_ALLOWED, { operation: input.operation });
   }
 
-  const crop: CropDefinition = cropOf(cropId ?? current.cropId);
+  const crop: CropDefinition | null = cropOf(cropId ?? current.cropId);
   const toState = requirement.toCropState;
   if (toState === null) {
     // Unreachable: `requireOperationAllowed` already refused a requirement without one.
@@ -572,6 +572,12 @@ export async function applyFieldOperation(
   let harvestedLiters: number | null = null;
   let fertilityAfter: Bp | undefined;
   if (toState === CropCycleState.HARVESTED) {
+    if (crop === null) {
+      // Unreachable: only `READY_TO_HARVEST` transitions here, and a field cannot reach it
+      // without having been sown. Stated rather than assumed, because the yield and the
+      // fertility drain below are both meaningless without a crop.
+      throw new ApiError(ValidationCode.FIELD_CROP_REQUIRED, { operation: input.operation });
+    }
     const settled = settleAttributes(current, atGameMs, crop);
     harvestedLiters = expectedYieldLiters(current, settled, crop);
     fertilityAfter = fertilityAfterHarvest(settled.fertilityBp, crop);
@@ -592,7 +598,7 @@ export async function applyFieldOperation(
   // section 76), so the field never rests in `HARVESTED`: the narrative cycle of GDD
   // section 84 ends on virgin soil in the same breath as the harvest. The growth timeline
   // is cleared with it, which is what makes the field project as unsown again.
-  if (current.cropCycleState === CropCycleState.HARVESTED) {
+  if (current.cropCycleState === CropCycleState.HARVESTED && crop !== null) {
     current = await applyTransition(
       tx,
       current,

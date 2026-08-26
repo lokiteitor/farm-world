@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDING_CATALOGUE } from '../../config/buildings.js';
-import { WHEAT } from '../../config/crops.js';
+import { WHEAT } from '../../config/crops/index.js';
 import { RESALE_FACTOR_BP } from '../../config/economy.js';
 import { PINE } from '../../config/forestry.js';
 import { MACHINE_CATALOGUE } from '../../config/machines.js';
@@ -186,10 +186,9 @@ describe('resale and liquidation value (plan section 6.6)', () => {
         ],
         buildings: ['GARAGE', 'SILO'],
         unusedLandCells: Array.from({ length: 50 }, () => 'GRASS' as const),
-        storedWheatLiters: 10_000,
-        storedWoodDm3: 0,
+        stock: [{ item: 'WHEAT', units: 10_000 }],
       },
-      { crop: WHEAT, species: PINE },
+      { species: PINE },
     );
     // Stock: 10 000 L x 0.90 = 9 000.
     expect(breakdown.inventory).toBe(Money.fromUnits(9_000));
@@ -207,8 +206,7 @@ describe('resale and liquidation value (plan section 6.6)', () => {
       machines: [{ type: MachineType.TRACTOR, purchasePrice: Money.ZERO, conditionBp: BP_ONE }],
       buildings: [],
       unusedLandCells: [],
-      storedWheatLiters: 0,
-      storedWoodDm3: 0,
+      stock: [],
     });
     expect(breakdown.machines).toBe(Money.fromUnits(10_800));
   });
@@ -219,8 +217,7 @@ describe('resale and liquidation value (plan section 6.6)', () => {
         machines: [],
         buildings: [],
         unusedLandCells: [],
-        storedWheatLiters: 0,
-        storedWoodDm3: 0,
+        stock: [],
       }).total,
     ).toBe(Money.ZERO);
   });

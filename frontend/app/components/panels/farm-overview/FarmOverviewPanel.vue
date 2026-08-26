@@ -4,7 +4,7 @@
 // Owner: W4-F. Panel `farm-overview` of the frozen registry.
 //
 // The asymmetry of plan section 5.4 is the shape of this panel and not a detail of its
-// layout: the fungible stock is aggregated per farm, because grain and wood have no
+// layout: the fungible stock is aggregated per farm and per category, because what it holds has no
 // individual identity, while the counted capacity is per building, because a machine and a
 // worker do have one and the server checks their capacity on the building row. So the silo
 // (GDD section 27) and the wood store (GDD section 136) are read from the farm, and the
@@ -31,6 +31,8 @@ import {
   labelOfBuildingType,
 } from '~/components/panels/farm-overview/buildingPresentation';
 import FarmFootprint from '~/components/panels/farm-overview/FarmFootprint.vue';
+import { STORAGE_CATEGORY_LABELS } from '~/components/panels/legend/vocabulary';
+import { STORAGE_RESOURCE_SECTIONS } from '~/components/panels/market/sale';
 import UiBadge from '~/components/ui/UiBadge.vue';
 import UiButton from '~/components/ui/UiButton.vue';
 import UiCard from '~/components/ui/UiCard.vue';
@@ -47,7 +49,7 @@ import {
   BUILDABLE_TERRAINS,
   SelectionPurpose,
   STORAGE_RESOURCE_UNITS,
-  StorageResource,
+  type StorageResource,
   TerrainType,
   VALIDATION_MESSAGES,
   ValidationCode,
@@ -267,11 +269,15 @@ const farmViews = computed(() =>
         resale: format.formatMoney(fromWireMoney(building.resaleValue)),
       };
     }),
-    wheat: {
-      ...storageBars(farm.wheat),
-      text: storageText(farm.wheat, StorageResource.WHEAT_LITERS),
-    },
-    wood: { ...storageBars(farm.wood), text: storageText(farm.wood, StorageResource.WOOD_M3) },
+    // Un medidor por categoria de almacen. Se dibujan todas, incluidas las que no tienen
+    // edificio: leer "0 / 0" en camara fria es lo que le dice al jugador que, si quiere
+    // sembrar hortaliza, tiene que construirla antes.
+    storage: farm.storage.map((row) => ({
+      category: row.category,
+      label: `${STORAGE_CATEGORY_LABELS[row.category]} (\u00a7${STORAGE_RESOURCE_SECTIONS[row.category]})`,
+      ...storageBars(row.usage),
+      text: storageText(row.usage, row.category),
+    })),
   })),
 );
 
@@ -345,20 +351,15 @@ function inspect(buildingId: string): void {
       </div>
 
       <div class="fw-farms__meters">
-        <UiMeter
-          label="Silo (§27)"
-          :value-bp="view.wheat.valueBp"
-          :reserved-bp="view.wheat.reservedBp"
-          :warn-above-bp="9000"
-        />
-        <p class="fw-farms__meterline">{{ view.wheat.text }}</p>
-        <UiMeter
-          label="Almacen de madera (§136)"
-          :value-bp="view.wood.valueBp"
-          :reserved-bp="view.wood.reservedBp"
-          :warn-above-bp="9000"
-        />
-        <p class="fw-farms__meterline">{{ view.wood.text }}</p>
+        <template v-for="row in view.storage" :key="row.category">
+          <UiMeter
+            :label="row.label"
+            :value-bp="row.valueBp"
+            :reserved-bp="row.reservedBp"
+            :warn-above-bp="9000"
+          />
+          <p class="fw-farms__meterline">{{ row.text }}</p>
+        </template>
       </div>
 
       <ul v-if="view.buildings.length > 0" class="fw-farms__buildings">

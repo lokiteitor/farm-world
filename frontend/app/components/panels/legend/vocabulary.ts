@@ -32,10 +32,15 @@ import {
 import {
   type BuildingType,
   CellOwnership,
+  CROPS,
+  CROP_IDS,
   CropCycleState,
+  type CropFamily,
   type CropId,
   LandUse,
+  type Season,
   type SoilCondition,
+  type StorageResource,
   type TaskOperation,
   TerrainType,
   TreeGrowthStage,
@@ -125,9 +130,48 @@ export const OPERATION_LABELS: Readonly<Record<TaskOperation, string>> = {
   CLEAR_LAND: 'Desmontar',
 };
 
-/** Crops of the catalogue (GDD section 82). */
-export const CROP_LABELS: Readonly<Record<CropId, string>> = {
-  WHEAT: 'Trigo',
+/**
+ * Crops of the catalogue (GDD section 82).
+ *
+ * Derived from the catalogue and no longer written out here. With sixty two crops a hand
+ * written table is a second list of names waiting to disagree with the first, and the
+ * compiler only catches the missing ones, never the wrong ones. `nameEs` lives in
+ * `shared/config/crops/` for the same reason `VALIDATION_MESSAGES` lives in the domain:
+ * the name of a thing belongs with the thing.
+ */
+export const CROP_LABELS: Readonly<Record<CropId, string>> = Object.fromEntries(
+  CROP_IDS.map((id) => [id, CROPS[id].nameEs]),
+) as Record<CropId, string>;
+
+/** Families of the catalogue, which is how the interface groups sixty two crops. */
+export const CROP_FAMILY_LABELS: Readonly<Record<CropFamily, string>> = {
+  CEREAL: 'Cereales',
+  LEGUME: 'Legumbres',
+  OILSEED: 'Oleaginosas',
+  INDUSTRIAL: 'Industriales',
+  ROOT: 'Raices y bulbos',
+  LEAFY: 'Hoja',
+  FRUITING: 'Fruto',
+  HERB: 'Hierbas',
+  FLOWER: 'Flores',
+  FORAGE: 'Forrajes',
+};
+
+/** The four seasons of the world clock. */
+export const SEASON_LABELS: Readonly<Record<Season, string>> = {
+  SPRING: 'Primavera',
+  SUMMER: 'Verano',
+  AUTUMN: 'Otonio',
+  WINTER: 'Invierno',
+};
+
+/** Storage categories: what a store holds, and therefore what has to be built. */
+export const STORAGE_CATEGORY_LABELS: Readonly<Record<StorageResource, string>> = {
+  GRAIN_LITERS: 'Grano',
+  FORAGE_LITERS: 'Forraje',
+  PRODUCE_LITERS: 'Hortaliza',
+  INDUSTRIAL_LITERS: 'Industrial',
+  WOOD_M3: 'Madera',
 };
 
 /** Buildings of the catalogue (GDD sections 116 y 136). */
@@ -137,6 +181,9 @@ export const BUILDING_LABELS: Readonly<Record<BuildingType, string>> = {
   WORKER_HOME: 'Vivienda',
   WORKSHOP: 'Taller',
   WOOD_STORAGE: 'Almacen de madera',
+  HAY_BARN: 'Henil',
+  COLD_STORE: 'Camara fria',
+  WAREHOUSE: 'Almacen',
 };
 
 // ---------------------------------------------------------------------------

@@ -23,8 +23,10 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import {
   STORAGE_RESOURCE_LABELS,
   STORAGE_RESOURCE_SECTIONS,
+  categoryOfItem,
   clampQuantity,
   sellBlockingCode,
+  stockItemLabel,
 } from '~/components/panels/market/sale';
 import UiButton from '~/components/ui/UiButton.vue';
 import UiCard from '~/components/ui/UiCard.vue';
@@ -40,7 +42,7 @@ import {
   STORAGE_RESOURCE_UNITS,
   VALIDATION_MESSAGES,
   fromWireMoney,
-  type StorageResource,
+  type StockItem,
 } from '~/shared/index';
 import { useFarmsStore } from '~/stores/farms';
 import { useInventoryStore } from '~/stores/inventory';
@@ -97,98 +99,110 @@ onMounted(async () => {
   }
 });
 
-function availableOf(resource: StorageResource): number {
+function availableOf(item: StockItem): number {
   return activeFarmId.value === ''
     ? 0
-    : (inventory.usageOf(activeFarmId.value, resource)?.storedUnits ?? 0);
+    : (inventory.lineOf(activeFarmId.value, item)?.storedUnits ?? 0);
 }
 
-function quantityOf(resource: StorageResource): number {
-  return clampQuantity(quantities[resource] ?? availableOf(resource), availableOf(resource));
+function quantityOf(item: StockItem): number {
+  return clampQuantity(quantities[item] ?? availableOf(item), availableOf(item));
 }
 
-function setQuantity(resource: StorageResource, value: number | string): void {
-  quantities[resource] = clampQuantity(Number(value), availableOf(resource));
+function setQuantity(item: StockItem, value: number | string): void {
+  quantities[item] = clampQuantity(Number(value), availableOf(item));
 }
 
-function sellAll(resource: StorageResource): void {
-  quantities[resource] = availableOf(resource);
+function sellAll(item: StockItem): void {
+  quantities[item] = availableOf(item);
 }
 
-const lines = computed(() =>
-  STORAGE_RESOURCES.map((resource) => {
-    const units = STORAGE_RESOURCE_UNITS[resource];
+/**
+ * The panel in two levels, because the domain is in two levels.
+ *
+ * Capacity belongs to the storage category, which is what a building grants, so that is
+ * what the meters draw. Value belongs to the crop, so a sellable row is one pile of one
+ * crop. A farm holding wheat and barley has one grain meter and two rows under it.
+ *
+ * Categories with nothing in them keep their meter, since "0 of 0" in the cold store is
+ * what tells the player a store has to be built before produce can be harvested at all.
+ */
+const categories = computed(() =>
+  STORAGE_RESOURCES.map((category) => {
+    const units = STORAGE_RESOURCE_UNITS[category];
     const usage =
-      activeFarmId.value === '' ? null : inventory.usageOf(activeFarmId.value, resource);
-    const line =
-      activeFarmId.value === '' ? undefined : inventory.lineOf(activeFarmId.value, resource);
-    const price = market.priceOf(resource);
-    const available = usage?.storedUnits ?? 0;
-    const quantity = quantityOf(resource);
-    const code = sellBlockingCode({ quantityUnits: quantity, availableUnits: available });
-    const storedBp =
-      usage === null || usage.capacityUnits === 0
-        ? 0
-        : Math.round((usage.storedUnits / usage.capacityUnits) * 10_000);
+      activeFarmId.value === '' ? null : inventory.categoryOf(activeFarmId.value, category)?.usage;
+    const stored = usage?.storedUnits ?? 0;
+    const capacity = usage?.capacityUnits ?? 0;
+    const storedBp = capacity === 0 ? 0 : Math.round((stored / capacity) * 10_000);
+    const piles = (activeFarmId.value === '' ? [] : inventory.linesOf(activeFarmId.value)).filter(
+      (line) => line.category === category,
+    );
     return {
-      resource,
-      label: STORAGE_RESOURCE_LABELS[resource],
-      section: STORAGE_RESOURCE_SECTIONS[resource],
-      units,
-      usage,
-      available,
-      quantity,
+      category,
+      label: STORAGE_RESOURCE_LABELS[category],
+      section: STORAGE_RESOURCE_SECTIONS[category],
+      hasCapacity: capacity > 0,
       storedBp,
-      reservedBp: usage === null ? 0 : Math.max(0, usage.occupancyBp - storedBp),
-      hasCapacity: (usage?.capacityUnits ?? 0) > 0,
-      storedText: format.formatQuantity(available, units.displayDivisor, units.displayUnit),
-      capacityText: format.formatQuantity(
-        usage?.capacityUnits ?? 0,
-        units.displayDivisor,
-        units.displayUnit,
-      ),
-      quantityText: format.formatQuantity(quantity, units.displayDivisor, units.displayUnit),
-      pricePerDisplayUnit: price === undefined ? null : fromWireMoney(price.pricePerDisplayUnit),
-      displayUnit: units.displayUnit,
-      marketValue: line === undefined ? null : fromWireMoney(line.marketValue),
-      // The shared rule, not the quoted price multiplied here (GDD sections 123 and 133).
-      revenue: market.revenueOf(resource, quantity),
-      reason: code === null ? '' : VALIDATION_MESSAGES[code],
-      canSell: code === null,
+      reservedBp:
+        usage === undefined || usage === null ? 0 : Math.max(0, usage.occupancyBp - storedBp),
+      storedText: format.formatQuantity(stored, units.displayDivisor, units.displayUnit),
+      capacityText: format.formatQuantity(capacity, units.displayDivisor, units.displayUnit),
+      lines: piles.map((line) => {
+        const available = line.storedUnits;
+        const quantity = quantityOf(line.item);
+        const code = sellBlockingCode({ quantityUnits: quantity, availableUnits: available });
+        const price = market.priceOf(line.item);
+        return {
+          item: line.item,
+          label: stockItemLabel(line.item),
+          available,
+          quantity,
+          storedText: format.formatQuantity(available, line.displayDivisor, line.displayUnit),
+          quantityText: format.formatQuantity(quantity, line.displayDivisor, line.displayUnit),
+          pricePerDisplayUnit:
+            price === undefined ? null : fromWireMoney(price.pricePerDisplayUnit),
+          displayUnit: line.displayUnit,
+          marketValue: fromWireMoney(line.marketValue),
+          // The shared rule, not the quoted price multiplied here (GDD sections 123 and 133).
+          revenue: market.revenueOf(line.item, quantity),
+          reason: code === null ? '' : VALIDATION_MESSAGES[code],
+          canSell: code === null,
+        };
+      }),
     };
   }),
 );
 
+/** Every sellable pile, flattened, which is what the total is computed over. */
+const lines = computed(() => categories.value.flatMap((category) => category.lines));
+
 /** Value of everything in store at the fixed price, as the server computed it per line. */
-const totalMarketValue = computed(() =>
-  Money.sum(
-    lines.value.map((line) => line.marketValue).filter((value): value is Money => value !== null),
-  ),
-);
+const totalMarketValue = computed(() => Money.sum(lines.value.map((line) => line.marketValue)));
 
 const busy = computed(() => pending.isRouteBusy('POST /api/market/sell'));
 
-async function sell(resource: StorageResource): Promise<void> {
+async function sell(item: StockItem): Promise<void> {
   const holding = farm.value;
   if (holding === null) {
     return;
   }
-  const quantity = quantityOf(resource);
+  const quantity = quantityOf(item);
   failure.value = '';
   lastSale.value = null;
   try {
     const reply = await api.mutate('POST /api/market/sell', {
-      body: { farmId: holding.id, resource, quantityUnits: quantity },
+      body: { farmId: holding.id, item, quantityUnits: quantity },
       subjectKind: 'FARM',
       subjectId: holding.id,
     });
-    const units = STORAGE_RESOURCE_UNITS[resource];
+    const units = STORAGE_RESOURCE_UNITS[categoryOfItem(item)];
     lastSale.value = `Vendidos ${format.formatQuantity(
       reply.result.quantitySoldUnits,
       units.displayDivisor,
       units.displayUnit,
-    )} por ${format.formatMoney(fromWireMoney(reply.result.revenue))}`;
-    delete quantities[resource];
+    )} de ${stockItemLabel(item)} por ${format.formatMoney(fromWireMoney(reply.result.revenue))}`;
+    delete quantities[item];
   } catch (error) {
     failure.value = isApiClientError(error) ? error.message : 'La peticion no pudo completarse.';
   }
@@ -200,7 +214,7 @@ async function sell(resource: StorageResource): Promise<void> {
     <UiEmptyState
       v-if="farm === null"
       title="Ninguna granja creada"
-      detail="Las existencias son de la granja: el grano y la madera se agregan por explotacion."
+      detail="Las existencias son de la granja y se agregan por explotacion."
     />
 
     <div v-else class="fw-market">
@@ -228,40 +242,49 @@ async function sell(resource: StorageResource): Promise<void> {
       </div>
 
       <p class="fw-market__muted">
-        El precio es fijo y no fluctua (§123). Posponer la venta conserva el grano, no mejora el
-        precio, y ocupa silo que una cosecha necesitara.
+        El precio es fijo y no fluctua (&sect;123) y es del cultivo, no de la categoria. Posponer la
+        venta no mejora el precio y ocupa almacen que una cosecha necesitara.
       </p>
 
       <p v-if="lastSale !== null" class="fw-market__done">{{ lastSale }}</p>
       <p v-if="failure !== ''" class="fw-market__failure">{{ failure }}</p>
 
-      <section v-for="line in lines" :key="line.resource" class="fw-market__row">
+      <section v-for="group in categories" :key="group.category" class="fw-market__row">
         <div class="fw-market__rowhead">
           <span class="fw-market__name"
-            >{{ line.label }} <small>§{{ line.section }}</small></span
+            >{{ group.label }} <small>&sect;{{ group.section }}</small></span
           >
-          <span class="fw-market__muted">
-            <template v-if="line.pricePerDisplayUnit === null">Precio no disponible</template>
-            <template v-else>
-              {{ format.formatMoney(line.pricePerDisplayUnit) }} / {{ line.displayUnit }}
-            </template>
-          </span>
         </div>
 
         <UiMeter
           label="Ocupacion del almacen"
-          :value-bp="line.storedBp"
-          :reserved-bp="line.reservedBp"
+          :value-bp="group.storedBp"
+          :reserved-bp="group.reservedBp"
           :warn-above-bp="9000"
         />
-        <p class="fw-market__muted">
-          {{ line.storedText }} de {{ line.capacityText }}
-          <template v-if="line.marketValue !== null">
-            · valor {{ format.formatMoney(line.marketValue) }}
-          </template>
+        <p class="fw-market__muted">{{ group.storedText }} de {{ group.capacityText }}</p>
+
+        <p v-if="!group.hasCapacity" class="fw-market__muted">
+          Sin almacen construido para esta categoria.
+        </p>
+        <p v-else-if="group.lines.length === 0" class="fw-market__muted">
+          Sin existencias que vender.
         </p>
 
-        <template v-if="line.available > 0">
+        <article v-for="line in group.lines" :key="line.item" class="fw-market__pile">
+          <div class="fw-market__rowhead">
+            <span class="fw-market__name">{{ line.label }}</span>
+            <span class="fw-market__muted">
+              <template v-if="line.pricePerDisplayUnit === null">Precio no disponible</template>
+              <template v-else>
+                {{ format.formatMoney(line.pricePerDisplayUnit) }} / {{ line.displayUnit }}
+              </template>
+            </span>
+          </div>
+          <p class="fw-market__muted">
+            {{ line.storedText }} · valor {{ format.formatMoney(line.marketValue) }}
+          </p>
+
           <label class="fw-market__field">
             <span>Cantidad</span>
             <input
@@ -270,42 +293,41 @@ async function sell(resource: StorageResource): Promise<void> {
               :max="line.available"
               step="1"
               :value="line.quantity"
-              @input="setQuantity(line.resource, ($event.target as HTMLInputElement).value)"
+              @input="setQuantity(line.item, ($event.target as HTMLInputElement).value)"
             />
           </label>
           <label class="fw-market__field">
-            <span>{{ line.units.storedUnit }}</span>
+            <span>{{ line.displayUnit }}</span>
             <input
               type="number"
               min="0"
               :max="line.available"
               step="1"
               :value="line.quantity"
-              @input="setQuantity(line.resource, ($event.target as HTMLInputElement).value)"
+              @input="setQuantity(line.item, ($event.target as HTMLInputElement).value)"
             />
-            <UiButton size="sm" variant="ghost" @click="sellAll(line.resource)">Todo</UiButton>
+            <UiButton size="sm" variant="ghost" @click="sellAll(line.item)">Todo</UiButton>
           </label>
 
           <p class="fw-market__preview">
             {{ line.quantityText }} ·
             <span class="fw-mono">{{ format.formatMoney(line.revenue) }}</span>
           </p>
-        </template>
-        <p v-else class="fw-market__muted">Sin existencias que vender.</p>
 
-        <div class="fw-market__actions">
-          <UiButton
-            size="sm"
-            variant="primary"
-            :disabled="!line.canSell"
-            :busy="busy"
-            :reason="line.reason"
-            @click="sell(line.resource)"
-          >
-            Vender
-          </UiButton>
-          <span v-if="line.reason !== ''" class="fw-market__blocked">{{ line.reason }}</span>
-        </div>
+          <div class="fw-market__actions">
+            <UiButton
+              size="sm"
+              variant="primary"
+              :disabled="!line.canSell"
+              :busy="busy"
+              :reason="line.reason"
+              @click="sell(line.item)"
+            >
+              Vender
+            </UiButton>
+            <span v-if="line.reason !== ''" class="fw-market__blocked">{{ line.reason }}</span>
+          </div>
+        </article>
       </section>
     </div>
   </UiCard>
@@ -322,6 +344,14 @@ async function sell(resource: StorageResource): Promise<void> {
   display: flex;
   gap: var(--fw-gap-lg, 16px);
   flex-wrap: wrap;
+}
+
+.fw-market__pile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 0 0 12px;
+  border-left: 2px solid var(--fw-border, #33383f);
 }
 
 .fw-market__row {

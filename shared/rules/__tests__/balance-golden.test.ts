@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BUILDING_CATALOGUE } from '../../config/buildings.js';
-import { WHEAT } from '../../config/crops.js';
+import { WHEAT } from '../../config/crops/index.js';
 import { STARTING_CAPITAL } from '../../config/economy.js';
 import { NATURAL_FOREST, PINE } from '../../config/forestry.js';
 import { MACHINE_CATALOGUE } from '../../config/machines.js';

@@ -351,15 +351,13 @@ describe('other request bodies', () => {
 
   it('rejects a sale of a quantity that is not positive', () => {
     expect(
-      sellBodySchema.safeParse({ farmId: 'frm_1', resource: 'WHEAT_LITERS', quantityUnits: 0 })
-        .success,
+      sellBodySchema.safeParse({ farmId: 'frm_1', item: 'WHEAT', quantityUnits: 0 }).success,
     ).toBe(false);
     expect(
-      sellBodySchema.safeParse({ farmId: 'frm_1', resource: 'WHEAT_LITERS', quantityUnits: -5 })
-        .success,
+      sellBodySchema.safeParse({ farmId: 'frm_1', item: 'WHEAT', quantityUnits: -5 }).success,
     ).toBe(false);
     // Omitting the quantity sells the whole free stock, which is a distinct request.
-    expect(sellBodySchema.safeParse({ farmId: 'frm_1', resource: 'WOOD_M3' }).success).toBe(true);
+    expect(sellBodySchema.safeParse({ farmId: 'frm_1', item: 'WOOD' }).success).toBe(true);
   });
 
   it('rejects a merge of fewer than two fields', () => {

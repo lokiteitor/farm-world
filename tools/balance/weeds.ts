@@ -19,7 +19,7 @@
 // The hours that count come from `WEED_GROWTH_STATES`, so a change to that list moves every
 // figure of this module instead of leaving the report quoting an old reading.
 
-import { WHEAT, type CropDefinition } from '../../shared/config/crops.js';
+import { WHEAT, type CropDefinition } from '../../shared/config/crops/index.js';
 import { WEED_GROWTH_STATES, WEED_LEVEL_MAX_BP } from '../../shared/config/transitions.js';
 import { Money } from '../../shared/domain/money.js';
 import { clampBp, type Bp } from '../../shared/domain/units.js';

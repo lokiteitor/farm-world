@@ -23,7 +23,9 @@ import {
 } from '../keys';
 import {
   applyPaletteCssVariables,
+  CROP_TINTS,
   growthTint,
+  growthTintFor,
   PALETTE,
   paletteCssBlock,
   paletteCssVariables,
@@ -47,17 +49,28 @@ import {
 } from '../terrain-atlas';
 import {
   buildUsageAtlas,
+  LOOK_VARIANT_STATES,
   USAGE_ATLAS_GEOMETRY,
   USAGE_TILE_COUNT,
   USAGE_TILE_ORDER,
   UsageTile,
+  usageTileForCropState,
   usageTileFromIndex,
   usageTileIndex,
   usageTileIndexForCropState,
 } from '../usage-atlas';
 import { CELL_PX, CHUNK_SIZE } from '~/shared/config/world';
-import { CROP_CYCLE_STATES, TERRAIN_TYPES } from '~/shared/domain/enums';
 import { bp } from '~/shared/domain/units';
+import {
+  BUILDING_TYPES,
+  CROPS,
+  CROP_CYCLE_STATES,
+  CROP_IDS,
+  CROP_LOOKS,
+  CropId,
+  CropLook,
+  TERRAIN_TYPES,
+} from '~/shared/index';
 import { floorMod } from '~/shared/rules/geometry';
 import { TERRAIN_BY_CODE, TERRAIN_CODE } from '~/shared/world/terrain';
 
@@ -588,7 +601,7 @@ describe('grid tile', () => {
 describe('sprite catalogue', () => {
   it('covers every machine of the catalogue, every building and every tree stage', () => {
     expect(spritesByGroup(SpriteGroup.MACHINE)).toHaveLength(8);
-    expect(spritesByGroup(SpriteGroup.BUILDING)).toHaveLength(5);
+    expect(spritesByGroup(SpriteGroup.BUILDING)).toHaveLength(BUILDING_TYPES.length);
     expect(spritesByGroup(SpriteGroup.TREE)).toHaveLength(4 * TREE_VARIANTS);
     expect(spritesByGroup(SpriteGroup.WORKER)).toHaveLength(2);
     expect(spritesByGroup(SpriteGroup.CURSOR)).toHaveLength(3);
@@ -627,6 +640,71 @@ describe('sprite catalogue', () => {
       expect(sprite.width).toBeGreaterThan(0);
       expect(sprite.height).toBeGreaterThan(0);
       expect(sprite.label.length).toBeGreaterThan(0);
+    }
+  });
+});
+
+describe('the crop looks of the usage atlas', () => {
+  it('varies the silhouette over exactly the four states that show a plant', () => {
+    // The other four are soil, and a seed does not read at sixteen pixels, so they keep
+    // one tile each whatever is going to grow on them.
+    for (const state of CROP_CYCLE_STATES) {
+      const varies = LOOK_VARIANT_STATES.includes(state);
+      const base = usageTileForCropState(state, CropLook.SPIKE);
+      for (const look of CROP_LOOKS) {
+        const tile = usageTileForCropState(state, look);
+        if (!varies || look === CropLook.SPIKE) {
+          expect(tile, `${look} ${state}`).toBe(base);
+        } else {
+          expect(tile, `${look} ${state}`).not.toBe(base);
+        }
+      }
+    }
+  });
+
+  it('gives every look and state a tile of its own, with no collisions', () => {
+    const seen = new Map<number, string>();
+    for (const look of CROP_LOOKS) {
+      for (const state of LOOK_VARIANT_STATES) {
+        const index = usageTileIndexForCropState(state, look);
+        const key = `${look}/${state}`;
+        const clash = seen.get(index);
+        expect(clash, `${key} colisiona con ${clash}`).toBeUndefined();
+        seen.set(index, key);
+      }
+    }
+    expect(seen.size).toBe(CROP_LOOKS.length * LOOK_VARIANT_STATES.length);
+  });
+
+  it('keeps the atlas at forty slots, which is the whole argument for looks', () => {
+    // Fifteen tiles that already existed plus six looks times four states. The alternative
+    // was sixty two crops times eight states, which is 496 (ADR-0063).
+    expect(USAGE_TILE_ORDER.length).toBe(39);
+    expect(USAGE_TILE_COUNT).toBe(40);
+  });
+
+  it('gives every crop a tint of its own, light enough not to swallow the silhouette', () => {
+    const seen = new Set<number>();
+    for (const cropId of CROP_IDS) {
+      const tint = CROP_TINTS[cropId];
+      expect(tint, cropId).toBeGreaterThanOrEqual(0);
+      expect(tint, cropId).toBeLessThanOrEqual(0xffffff);
+      // A tint multiplies, so a dark one would darken the tile into mud.
+      for (const shift of [16, 8, 0]) {
+        expect((tint >> shift) & 0xff, `${cropId} canal ${shift}`).toBeGreaterThanOrEqual(0x80);
+      }
+      expect(seen.has(tint), `${cropId} repite tinte`).toBe(false);
+      seen.add(tint);
+    }
+  });
+
+  it('draws wheat exactly as it was drawn before the catalogue grew', () => {
+    // The anchor: wheat is the spike look and its tint is the end of the growth ramp, so
+    // both of the golden readings above keep answering what they always answered.
+    expect(CROPS.WHEAT.look).toBe(CropLook.SPIKE);
+    expect(CROP_TINTS.WHEAT).toBe(PALETTE.growth.end);
+    for (const progress of [0, 2_500, 10_000]) {
+      expect(growthTintFor(CropId.WHEAT, bp(progress))).toBe(growthTint(bp(progress)));
     }
   });
 });

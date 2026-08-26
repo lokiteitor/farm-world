@@ -11,7 +11,7 @@
 // the GDD publishes come out of its own catalogue.
 
 import { BUILDING_CATALOGUE } from '../config/buildings.js';
-import { CROPS, WHEAT, type CropDefinition } from '../config/crops.js';
+import { CROPS, WHEAT, type CropDefinition } from '../config/crops/index.js';
 import { STARTING_CAPITAL } from '../config/economy.js';
 import { MACHINE_CATALOGUE, OPERATION_REQUIREMENTS } from '../config/machines.js';
 import { WEED_GROWTH_STATES } from '../config/transitions.js';

@@ -47,6 +47,7 @@ import {
   CellOwnership,
   CropCycleState,
   CropId,
+  STORAGE_RESOURCES,
   LandUse,
   MACHINE_CATALOGUE,
   MAX_SELECTION_CELLS,
@@ -57,6 +58,7 @@ import {
   POOL_REFRESH_INTERVAL_GAME_HOURS,
   SoilCondition,
   StorageResource,
+  type StockItem,
   TaskStatus,
   TreeStatus,
   ValidationCode,
@@ -319,11 +321,10 @@ function recomputeFarm(world: MockWorld): void {
     // section 5.4: what is counted is checked per building, what is fungible is held by
     // the farm. Without this, building a second silo left the capacity where it was and
     // the occupancy of the panel disagreed with the catalogue.
-    wheat: usageWithCapacity(
-      world.farm.wheat,
-      storageCapacityOf(world, StorageResource.WHEAT_LITERS),
-    ),
-    wood: usageWithCapacity(world.farm.wood, storageCapacityOf(world, StorageResource.WOOD_M3)),
+    storage: world.farm.storage.map((row) => ({
+      category: row.category,
+      usage: usageWithCapacity(row.usage, storageCapacityOf(world, row.category)),
+    })),
   };
   if (garage !== undefined) {
     garage.occupancy = world.machines.length;
@@ -415,8 +416,7 @@ function emptyFarm(world: MockWorld, id: string, name: string): FarmDto {
   return {
     id,
     name,
-    wheat: empty,
-    wood: empty,
+    storage: STORAGE_RESOURCES.map((category) => ({ category, usage: empty })),
     machineSlots: { used: 0, total: 0 },
     workerSlots: { used: 0, total: 0 },
     hasWorkshop: false,
@@ -425,24 +425,41 @@ function emptyFarm(world: MockWorld, id: string, name: string): FarmDto {
   };
 }
 
-function inventoryLineUsage(world: MockWorld, resource: StorageResource) {
-  return resource === StorageResource.WHEAT_LITERS ? world.farm.wheat : world.farm.wood;
+/** The occupancy of one category, as the mock farm holds it. */
+function categoryUsage(world: MockWorld, category: StorageResource) {
+  return (
+    world.farm.storage.find((row) => row.category === category)?.usage ?? {
+      storedUnits: 0,
+      reservedUnits: 0,
+      capacityUnits: 0,
+      occupancyBp: 0,
+    }
+  );
+}
+
+/** The category a pile counts against, which is the meter it moves. */
+function itemCategory(item: StockItem): StorageResource {
+  return item === 'WOOD' ? StorageResource.WOOD_M3 : CROPS[item].storageResource;
+}
+
+/** The price of one pile: the crop's, or the wood constant the mock quotes. */
+function itemPrice(item: StockItem) {
+  return item === 'WOOD' ? MOCK_WOOD_PRICE_PER_DM3 : CROPS[item].sellPricePerLiter;
 }
 
 function refreshInventory(world: MockWorld): void {
   world.inventory = world.inventory.map((farm) => ({
     ...farm,
+    categories: farm.categories.map((row) => ({
+      ...row,
+      usage: usageWithCapacity(
+        categoryUsage(world, row.category),
+        storageCapacityOf(world, row.category),
+      ),
+    })),
     lines: farm.lines.map((line) => ({
       ...line,
-      usage: inventoryLineUsage(world, line.resource),
-      marketValue: toWireMoney(
-        multiplyByCount(
-          line.resource === StorageResource.WHEAT_LITERS
-            ? CROPS[CropId.WHEAT].sellPricePerLiter
-            : MOCK_WOOD_PRICE_PER_DM3,
-          inventoryLineUsage(world, line.resource).storedUnits,
-        ),
-      ),
+      marketValue: toWireMoney(multiplyByCount(itemPrice(line.item), line.storedUnits)),
     })),
   }));
 }
@@ -621,15 +638,15 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
         .filter((worker) => worker.status === WorkerStatus.IDLE)
         .map((worker) => ({ workerId: worker.id, name: worker.name })),
       repairsCompleted: [],
-      storage: [
-        {
+      storage: world.farm.storage
+        .filter((row) => row.usage.capacityUnits > 0)
+        .map((row) => ({
           farmId: MOCK_FARM_ID,
-          resource: StorageResource.WHEAT_LITERS,
-          storedUnits: world.farm.wheat.storedUnits,
-          capacityUnits: world.farm.wheat.capacityUnits,
-          occupancyBp: world.farm.wheat.occupancyBp,
-        },
-      ],
+          resource: row.category,
+          storedUnits: row.usage.storedUnits,
+          capacityUnits: row.usage.capacityUnits,
+          occupancyBp: row.usage.occupancyBp,
+        })),
       treeStageChanges: [],
       wasted: [],
       liquidations: [],
@@ -909,7 +926,7 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
     // (`backend/src/modules/farms/index.ts`, and docs/handoff/NOTES-w4f.md, section 4.2).
     const definition = BUILDING_CATALOGUE[building.type];
     if (definition.capacityKind === 'STORAGE' && definition.capacityResource !== null) {
-      const usage = inventoryLineUsage(world, definition.capacityResource);
+      const usage = categoryUsage(world, definition.capacityResource);
       const remaining = usage.capacityUnits - (definition.capacity ?? 0);
       if (usage.storedUnits + usage.reservedUnits > remaining) {
         return fail(ValidationCode.BUILDING_NOT_EMPTY, {
@@ -1192,7 +1209,11 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
         requiredImplement: requirement.requiredImplement,
         requiredPossession: requirement.requiredPossession,
         requiresCrop: requirement.requiresCrop,
-        requiresStorage: requirement.requiresStorage,
+        // `FROM_CROP` es un centinela de la tabla de requisitos, no una categoria: la
+        // ruta informa null y `storageFromCrop` es lo que dice que la decide el cultivo.
+        requiresStorage:
+          requirement.requiresStorage === 'FROM_CROP' ? null : requirement.requiresStorage,
+        storageFromCrop: requirement.requiresStorage === 'FROM_CROP',
       })),
       minConditionToAssignBp: MIN_CONDITION_TO_ASSIGN,
       conditionWarningThresholdBp: CONDITION_WARNING_THRESHOLD,
@@ -1563,22 +1584,21 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
       return guard;
     }
     const world = server.world;
-    const input = body<{ farmId: string; resource: StorageResource; quantityUnits?: number }>(
-      request,
-    );
-    const usage = inventoryLineUsage(world, input.resource);
-    const quantity = input.quantityUnits ?? usage.storedUnits;
-    if (quantity <= 0 || quantity > usage.storedUnits) {
+    const input = body<{ farmId: string; item: StockItem; quantityUnits?: number }>(request);
+    // The pile decides the price and the category decides the meter, exactly as the server
+    // does: selling barley must not take wheat out of the silo.
+    const category = itemCategory(input.item);
+    const line = world.inventory[0]?.lines.find((row) => row.item === input.item);
+    const available = line?.storedUnits ?? 0;
+    const quantity = input.quantityUnits ?? available;
+    if (quantity <= 0 || quantity > available) {
       return fail(ValidationCode.INSUFFICIENT_STOCK, {
         requiredUnits: quantity,
-        availableUnits: usage.storedUnits,
+        availableUnits: available,
       });
     }
-    const price =
-      input.resource === StorageResource.WHEAT_LITERS
-        ? CROPS[CropId.WHEAT].sellPricePerLiter
-        : MOCK_WOOD_PRICE_PER_DM3;
-    const revenue = multiplyByCount(price, quantity);
+    const revenue = multiplyByCount(itemPrice(input.item), quantity);
+    const usage = categoryUsage(world, category);
     const nextStored = usage.storedUnits - quantity;
     const nextUsage = {
       ...usage,
@@ -1588,21 +1608,28 @@ export const MOCK_HANDLERS: Readonly<Record<ApiRouteKey, Handler>> = {
           ? 0
           : Math.round(((nextStored + usage.reservedUnits) / usage.capacityUnits) * 10_000),
     };
-    world.farm =
-      input.resource === StorageResource.WHEAT_LITERS
-        ? { ...world.farm, wheat: nextUsage }
-        : { ...world.farm, wood: nextUsage };
+    world.farm = {
+      ...world.farm,
+      storage: world.farm.storage.map((row) =>
+        row.category === category ? { ...row, usage: nextUsage } : row,
+      ),
+    };
+    world.inventory = world.inventory.map((farm) => ({
+      ...farm,
+      lines: farm.lines.map((row) =>
+        row.item === input.item ? { ...row, storedUnits: nextStored } : row,
+      ),
+    }));
     refreshInventory(world);
     server.emit('INVENTORY_UPSERTED', { farms: world.inventory });
     server.emit('FARM_UPSERTED', { farm: world.farm });
-    post(
-      server,
-      revenue,
-      input.resource === StorageResource.WHEAT_LITERS ? 'CROP_SALE' : 'WOOD_SALE',
-      { refType: 'FARM', refId: MOCK_FARM_ID },
-    );
+    post(server, revenue, input.item === 'WOOD' ? 'WOOD_SALE' : 'CROP_SALE', {
+      refType: 'FARM',
+      refId: MOCK_FARM_ID,
+    });
     return mutation(server, {
-      resource: input.resource,
+      item: input.item,
+      category,
       quantitySoldUnits: quantity,
       revenue: toWireMoney(revenue),
       balanceAfter: toWireMoney(world.balance),

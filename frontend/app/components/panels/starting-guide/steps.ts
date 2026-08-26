@@ -143,6 +143,9 @@ const BUILDING_STEP_DETAIL: Readonly<Record<BuildingType, string>> = {
   WORKER_HOME: 'Sin plaza de vivienda no se contrata.',
   WORKSHOP: 'Da acceso a la reparacion. El arranque no lo costea.',
   WOOD_STORAGE: 'Almacena la madera de la explotacion forestal.',
+  HAY_BARN: 'Guarda el forraje. Sin henil no se cosecha un cultivo forrajero.',
+  COLD_STORE: 'Guarda hortaliza, raiz, fruto, hierba y flor: todo lo perecedero.',
+  WAREHOUSE: 'Guarda algodon y tabaco, que aguantan secos.',
 };
 
 const BUILDING_STEP_SECTIONS: Readonly<Record<BuildingType, readonly number[]>> = {
@@ -150,6 +153,9 @@ const BUILDING_STEP_SECTIONS: Readonly<Record<BuildingType, readonly number[]>> 
   SILO: [27, 83],
   WORKER_HOME: [28, 108],
   WORKSHOP: [29, 93],
+  HAY_BARN: [27, 83],
+  COLD_STORE: [27, 83],
+  WAREHOUSE: [27, 83],
   WOOD_STORAGE: [136],
 };
 

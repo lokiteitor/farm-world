@@ -90,10 +90,10 @@ async function snapshot(playerId: PlayerId): Promise<Record<string, unknown>> {
       orderBy: { id: 'asc' },
       select: { id: true, cropCycleState: true, currentTaskId: true, cropId: true },
     }),
-    harness.prisma.farm.findMany({
-      where: { playerId },
-      orderBy: { id: 'asc' },
-      select: { id: true, storedWheatLiters: true, reservedWheatLiters: true },
+    harness.prisma.farmStock.findMany({
+      where: { farm: { playerId } },
+      orderBy: [{ farmId: 'asc' }, { item: 'asc' }],
+      select: { farmId: true, item: true, storedUnits: true, reservedUnits: true },
     }),
     harness.prisma.task.count({ where: { playerId } }),
     harness.prisma.taskMachine.count({ where: { task: { playerId } } }),

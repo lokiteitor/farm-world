@@ -93,8 +93,7 @@ describe('http statuses', () => {
     for (const code of [
       ValidationCode.GARAGE_CAPACITY_EXCEEDED,
       ValidationCode.HOME_CAPACITY_EXCEEDED,
-      ValidationCode.SILO_CAPACITY_EXCEEDED,
-      ValidationCode.WOOD_STORAGE_CAPACITY_EXCEEDED,
+      ValidationCode.STORAGE_CAPACITY_EXCEEDED,
       ValidationCode.MACHINE_NOT_IDLE,
       ValidationCode.WORKER_NOT_IDLE,
       ValidationCode.FIELD_STATE_NOT_ALLOWED,

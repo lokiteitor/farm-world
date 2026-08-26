@@ -257,6 +257,944 @@
       }
     }
   },
+  "catalogue": {
+    "MAIZ": {
+      "nameEs": "Maiz",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 397.3417366946779,
+      "baseYieldPerCellLiters": 150,
+      "sellPricePerLiter": "0.8400",
+      "revenuePerCycle": "19114.2000",
+      "holdingCostPerCycle": "18836.6435",
+      "netPerCycle": "277.5565"
+    },
+    "WHEAT": {
+      "nameEs": "Trigo",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 325.3417366946779,
+      "baseYieldPerCellLiters": 90,
+      "sellPricePerLiter": "0.9000",
+      "revenuePerCycle": "16459.2000",
+      "holdingCostPerCycle": "16194.2435",
+      "netPerCycle": "264.9565"
+    },
+    "CEBADA": {
+      "nameEs": "Cebada",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "SPRING"
+      ],
+      "cycleGameHours": 317.3417366946779,
+      "baseYieldPerCellLiters": 82,
+      "sellPricePerLiter": "0.9500",
+      "revenuePerCycle": "16109.1500",
+      "holdingCostPerCycle": "15900.6435",
+      "netPerCycle": "208.5065"
+    },
+    "AVENA": {
+      "nameEs": "Avena",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "SPRING"
+      ],
+      "cycleGameHours": 321.3417366946779,
+      "baseYieldPerCellLiters": 85,
+      "sellPricePerLiter": "0.9400",
+      "revenuePerCycle": "16331.5600",
+      "holdingCostPerCycle": "16047.4435",
+      "netPerCycle": "284.1165"
+    },
+    "CENTENO": {
+      "nameEs": "Centeno",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 329.3417366946779,
+      "baseYieldPerCellLiters": 88,
+      "sellPricePerLiter": "0.9400",
+      "revenuePerCycle": "16609.8000",
+      "holdingCostPerCycle": "16341.0435",
+      "netPerCycle": "268.7565"
+    },
+    "SORGO": {
+      "nameEs": "Sorgo",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 373.3417366946779,
+      "baseYieldPerCellLiters": 130,
+      "sellPricePerLiter": "0.8300",
+      "revenuePerCycle": "18310.6300",
+      "holdingCostPerCycle": "17955.8435",
+      "netPerCycle": "354.7865"
+    },
+    "TRITICALE": {
+      "nameEs": "Triticale",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "SPRING"
+      ],
+      "cycleGameHours": 333.3417366946779,
+      "baseYieldPerCellLiters": 95,
+      "sellPricePerLiter": "0.8900",
+      "revenuePerCycle": "16782.7300",
+      "holdingCostPerCycle": "16487.8435",
+      "netPerCycle": "294.8865"
+    },
+    "MIJO": {
+      "nameEs": "Mijo",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 309.3417366946779,
+      "baseYieldPerCellLiters": 66,
+      "sellPricePerLiter": "1.1400",
+      "revenuePerCycle": "15875.6400",
+      "holdingCostPerCycle": "15607.0435",
+      "netPerCycle": "268.5965"
+    },
+    "QUINOA": {
+      "nameEs": "Quinoa",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 361.3417366946779,
+      "baseYieldPerCellLiters": 70,
+      "sellPricePerLiter": "1.4300",
+      "revenuePerCycle": "17797.7800",
+      "holdingCostPerCycle": "17515.4435",
+      "netPerCycle": "282.3365"
+    },
+    "AMARANTO": {
+      "nameEs": "Amaranto",
+      "family": "CEREAL",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 353.3417366946779,
+      "baseYieldPerCellLiters": 64,
+      "sellPricePerLiter": "1.4900",
+      "revenuePerCycle": "17468.7600",
+      "holdingCostPerCycle": "17221.8435",
+      "netPerCycle": "246.9165"
+    },
+    "FRIJOL": {
+      "nameEs": "Frijol",
+      "family": "LEGUME",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 341.3417366946779,
+      "baseYieldPerCellLiters": 72,
+      "sellPricePerLiter": "1.3300",
+      "revenuePerCycle": "17183.6000",
+      "holdingCostPerCycle": "16781.4435",
+      "netPerCycle": "402.1565"
+    },
+    "GARBANZO": {
+      "nameEs": "Garbanzo",
+      "family": "LEGUME",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 349.3417366946779,
+      "baseYieldPerCellLiters": 68,
+      "sellPricePerLiter": "1.4900",
+      "revenuePerCycle": "17435.9800",
+      "holdingCostPerCycle": "17075.0435",
+      "netPerCycle": "360.9365"
+    },
+    "LENTEJA": {
+      "nameEs": "Lenteja",
+      "family": "LEGUME",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 345.3417366946779,
+      "baseYieldPerCellLiters": 60,
+      "sellPricePerLiter": "1.6500",
+      "revenuePerCycle": "17349.7500",
+      "holdingCostPerCycle": "16928.2435",
+      "netPerCycle": "421.5065"
+    },
+    "CHICHARO": {
+      "nameEs": "Chicharo",
+      "family": "LEGUME",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 313.3417366946779,
+      "baseYieldPerCellLiters": 74,
+      "sellPricePerLiter": "1.0800",
+      "revenuePerCycle": "16119.0000",
+      "holdingCostPerCycle": "15753.8435",
+      "netPerCycle": "365.1565"
+    },
+    "HABA": {
+      "nameEs": "Haba",
+      "family": "LEGUME",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 337.3417366946779,
+      "baseYieldPerCellLiters": 88,
+      "sellPricePerLiter": "1.0600",
+      "revenuePerCycle": "16934.5600",
+      "holdingCostPerCycle": "16634.6435",
+      "netPerCycle": "299.9165"
+    },
+    "SOYA": {
+      "nameEs": "Soya",
+      "family": "LEGUME",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 369.3417366946779,
+      "baseYieldPerCellLiters": 96,
+      "sellPricePerLiter": "1.2300",
+      "revenuePerCycle": "18213.8400",
+      "holdingCostPerCycle": "17809.0435",
+      "netPerCycle": "404.7965"
+    },
+    "CACAHUATE": {
+      "nameEs": "Cacahuate",
+      "family": "LEGUME",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 381.3417366946779,
+      "baseYieldPerCellLiters": 78,
+      "sellPricePerLiter": "1.6500",
+      "revenuePerCycle": "18635.1000",
+      "holdingCostPerCycle": "18249.4435",
+      "netPerCycle": "385.6565"
+    },
+    "CANOLA": {
+      "nameEs": "Canola",
+      "family": "OILSEED",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN"
+      ],
+      "cycleGameHours": 410.8176725235549,
+      "baseYieldPerCellLiters": 82,
+      "sellPricePerLiter": "1.4300",
+      "revenuePerCycle": "20356.0500",
+      "holdingCostPerCycle": "19865.9696",
+      "netPerCycle": "490.0804"
+    },
+    "GIRASOL": {
+      "nameEs": "Girasol",
+      "family": "OILSEED",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 418.8176725235549,
+      "baseYieldPerCellLiters": 90,
+      "sellPricePerLiter": "1.3800",
+      "revenuePerCycle": "20712.4200",
+      "holdingCostPerCycle": "20159.5696",
+      "netPerCycle": "552.8504"
+    },
+    "AJONJOLI": {
+      "nameEs": "Ajonjoli",
+      "family": "OILSEED",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 402.8176725235549,
+      "baseYieldPerCellLiters": 52,
+      "sellPricePerLiter": "2.1500",
+      "revenuePerCycle": "20061.6500",
+      "holdingCostPerCycle": "19572.3696",
+      "netPerCycle": "489.2804"
+    },
+    "LINAZA": {
+      "nameEs": "Linaza",
+      "family": "OILSEED",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "SPRING"
+      ],
+      "cycleGameHours": 394.8176725235549,
+      "baseYieldPerCellLiters": 56,
+      "sellPricePerLiter": "1.8900",
+      "revenuePerCycle": "19714.5900",
+      "holdingCostPerCycle": "19278.7696",
+      "netPerCycle": "435.8204"
+    },
+    "MOSTAZA": {
+      "nameEs": "Mostaza",
+      "family": "OILSEED",
+      "storageResource": "GRAIN_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "SPRING"
+      ],
+      "cycleGameHours": 378.8176725235549,
+      "baseYieldPerCellLiters": 58,
+      "sellPricePerLiter": "1.6600",
+      "revenuePerCycle": "19154.7400",
+      "holdingCostPerCycle": "18691.5696",
+      "netPerCycle": "463.1704"
+    },
+    "ALGODON": {
+      "nameEs": "Algodon",
+      "family": "INDUSTRIAL",
+      "storageResource": "INDUSTRIAL_LITERS",
+      "sowingSeasons": [
+        "SPRING"
+      ],
+      "cycleGameHours": 458.8176725235549,
+      "baseYieldPerCellLiters": 64,
+      "sellPricePerLiter": "2.7800",
+      "revenuePerCycle": "22240.0000",
+      "holdingCostPerCycle": "21627.5696",
+      "netPerCycle": "612.4304"
+    },
+    "TABACO": {
+      "nameEs": "Tabaco",
+      "family": "INDUSTRIAL",
+      "storageResource": "INDUSTRIAL_LITERS",
+      "sowingSeasons": [
+        "SPRING"
+      ],
+      "cycleGameHours": 442.8176725235549,
+      "baseYieldPerCellLiters": 70,
+      "sellPricePerLiter": "2.4800",
+      "revenuePerCycle": "21700.0000",
+      "holdingCostPerCycle": "21040.3696",
+      "netPerCycle": "659.6304"
+    },
+    "PAPA": {
+      "nameEs": "Papa",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 402.8176725235549,
+      "baseYieldPerCellLiters": 260,
+      "sellPricePerLiter": "0.5400",
+      "revenuePerCycle": "20035.0800",
+      "holdingCostPerCycle": "19572.3696",
+      "netPerCycle": "462.7104"
+    },
+    "JICAMA": {
+      "nameEs": "Jicama",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 414.8176725235549,
+      "baseYieldPerCellLiters": 210,
+      "sellPricePerLiter": "0.7600",
+      "revenuePerCycle": "20619.5600",
+      "holdingCostPerCycle": "20012.7696",
+      "netPerCycle": "606.7904"
+    },
+    "BETABEL": {
+      "nameEs": "Betabel",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 390.8176725235549,
+      "baseYieldPerCellLiters": 230,
+      "sellPricePerLiter": "0.5500",
+      "revenuePerCycle": "19588.2500",
+      "holdingCostPerCycle": "19131.9696",
+      "netPerCycle": "456.2804"
+    },
+    "ZANAHORIA": {
+      "nameEs": "Zanahoria",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 378.8176725235549,
+      "baseYieldPerCellLiters": 240,
+      "sellPricePerLiter": "0.4700",
+      "revenuePerCycle": "19142.1600",
+      "holdingCostPerCycle": "18691.5696",
+      "netPerCycle": "450.5904"
+    },
+    "RABANO": {
+      "nameEs": "Rabano",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 330.8176725235549,
+      "baseYieldPerCellLiters": 130,
+      "sellPricePerLiter": "0.6200",
+      "revenuePerCycle": "17320.3200",
+      "holdingCostPerCycle": "16929.9696",
+      "netPerCycle": "390.3504"
+    },
+    "CHIRIVIA": {
+      "nameEs": "Chirivia",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 398.8176725235549,
+      "baseYieldPerCellLiters": 190,
+      "sellPricePerLiter": "0.7200",
+      "revenuePerCycle": "20075.0400",
+      "holdingCostPerCycle": "19425.5696",
+      "netPerCycle": "649.4704"
+    },
+    "CEBOLLA": {
+      "nameEs": "Cebolla",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 410.8176725235549,
+      "baseYieldPerCellLiters": 220,
+      "sellPricePerLiter": "0.6900",
+      "revenuePerCycle": "20432.2800",
+      "holdingCostPerCycle": "19865.9696",
+      "netPerCycle": "566.3104"
+    },
+    "AJO": {
+      "nameEs": "Ajo",
+      "family": "ROOT",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 434.8176725235549,
+      "baseYieldPerCellLiters": 120,
+      "sellPricePerLiter": "1.4200",
+      "revenuePerCycle": "21300.0000",
+      "holdingCostPerCycle": "20746.7696",
+      "netPerCycle": "553.2304"
+    },
+    "LECHUGA": {
+      "nameEs": "Lechuga",
+      "family": "LEAFY",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER",
+        "SPRING"
+      ],
+      "cycleGameHours": 338.8176725235549,
+      "baseYieldPerCellLiters": 140,
+      "sellPricePerLiter": "0.5900",
+      "revenuePerCycle": "17610.3200",
+      "holdingCostPerCycle": "17223.5696",
+      "netPerCycle": "386.7504"
+    },
+    "ESPINACA": {
+      "nameEs": "Espinaca",
+      "family": "LEAFY",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER",
+        "SPRING"
+      ],
+      "cycleGameHours": 334.8176725235549,
+      "baseYieldPerCellLiters": 120,
+      "sellPricePerLiter": "0.6800",
+      "revenuePerCycle": "17592.9600",
+      "holdingCostPerCycle": "17076.7696",
+      "netPerCycle": "516.1904"
+    },
+    "ACELGA": {
+      "nameEs": "Acelga",
+      "family": "LEAFY",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER",
+        "SPRING"
+      ],
+      "cycleGameHours": 342.8176725235549,
+      "baseYieldPerCellLiters": 130,
+      "sellPricePerLiter": "0.6600",
+      "revenuePerCycle": "18018.0000",
+      "holdingCostPerCycle": "17370.3696",
+      "netPerCycle": "647.6304"
+    },
+    "COL": {
+      "nameEs": "Col",
+      "family": "LEAFY",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER",
+        "SPRING"
+      ],
+      "cycleGameHours": 370.8176725235549,
+      "baseYieldPerCellLiters": 190,
+      "sellPricePerLiter": "0.5300",
+      "revenuePerCycle": "18992.0200",
+      "holdingCostPerCycle": "18397.9696",
+      "netPerCycle": "594.0504"
+    },
+    "COLIFLOR": {
+      "nameEs": "Coliflor",
+      "family": "LEAFY",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER",
+        "SPRING"
+      ],
+      "cycleGameHours": 378.8176725235549,
+      "baseYieldPerCellLiters": 160,
+      "sellPricePerLiter": "0.6600",
+      "revenuePerCycle": "19155.8400",
+      "holdingCostPerCycle": "18691.5696",
+      "netPerCycle": "464.2704"
+    },
+    "BROCOLI": {
+      "nameEs": "Brocoli",
+      "family": "LEAFY",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER",
+        "SPRING"
+      ],
+      "cycleGameHours": 374.8176725235549,
+      "baseYieldPerCellLiters": 150,
+      "sellPricePerLiter": "0.6900",
+      "revenuePerCycle": "19023.3000",
+      "holdingCostPerCycle": "18544.7696",
+      "netPerCycle": "478.5304"
+    },
+    "PEPINO": {
+      "nameEs": "Pepino",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 354.8176725235549,
+      "baseYieldPerCellLiters": 180,
+      "sellPricePerLiter": "0.5100",
+      "revenuePerCycle": "18339.0900",
+      "holdingCostPerCycle": "17810.7696",
+      "netPerCycle": "528.3204"
+    },
+    "CALABACITA": {
+      "nameEs": "Calabacita",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 346.8176725235549,
+      "baseYieldPerCellLiters": 165,
+      "sellPricePerLiter": "0.5300",
+      "revenuePerCycle": "17997.2100",
+      "holdingCostPerCycle": "17517.1696",
+      "netPerCycle": "480.0404"
+    },
+    "CALABAZA": {
+      "nameEs": "Calabaza",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 402.8176725235549,
+      "baseYieldPerCellLiters": 210,
+      "sellPricePerLiter": "0.6400",
+      "revenuePerCycle": "20166.4000",
+      "holdingCostPerCycle": "19572.3696",
+      "netPerCycle": "594.0304"
+    },
+    "MELON": {
+      "nameEs": "Melon",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 390.8176725235549,
+      "baseYieldPerCellLiters": 175,
+      "sellPricePerLiter": "0.7000",
+      "revenuePerCycle": "19786.2000",
+      "holdingCostPerCycle": "19131.9696",
+      "netPerCycle": "654.2304"
+    },
+    "SANDIA": {
+      "nameEs": "Sandia",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 398.8176725235549,
+      "baseYieldPerCellLiters": 200,
+      "sellPricePerLiter": "0.6500",
+      "revenuePerCycle": "20003.1000",
+      "holdingCostPerCycle": "19425.5696",
+      "netPerCycle": "577.5304"
+    },
+    "BERENJENA": {
+      "nameEs": "Berenjena",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 382.8176725235549,
+      "baseYieldPerCellLiters": 150,
+      "sellPricePerLiter": "0.7600",
+      "revenuePerCycle": "19430.9200",
+      "holdingCostPerCycle": "18838.3696",
+      "netPerCycle": "592.5504"
+    },
+    "TOMATE": {
+      "nameEs": "Tomate",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 386.8176725235549,
+      "baseYieldPerCellLiters": 195,
+      "sellPricePerLiter": "0.6000",
+      "revenuePerCycle": "19494.6000",
+      "holdingCostPerCycle": "18985.1696",
+      "netPerCycle": "509.4304"
+    },
+    "TOMATILLO": {
+      "nameEs": "Tomatillo",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 374.8176725235549,
+      "baseYieldPerCellLiters": 170,
+      "sellPricePerLiter": "0.6300",
+      "revenuePerCycle": "19074.5100",
+      "holdingCostPerCycle": "18544.7696",
+      "netPerCycle": "529.7404"
+    },
+    "CHILE": {
+      "nameEs": "Chile",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 394.8176725235549,
+      "baseYieldPerCellLiters": 125,
+      "sellPricePerLiter": "1.0000",
+      "revenuePerCycle": "19871.0000",
+      "holdingCostPerCycle": "19278.7696",
+      "netPerCycle": "592.2304"
+    },
+    "PIMIENTO": {
+      "nameEs": "Pimiento",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 390.8176725235549,
+      "baseYieldPerCellLiters": 135,
+      "sellPricePerLiter": "0.9100",
+      "revenuePerCycle": "19842.5500",
+      "holdingCostPerCycle": "19131.9696",
+      "netPerCycle": "710.5804"
+    },
+    "EJOTE": {
+      "nameEs": "Ejote",
+      "family": "FRUITING",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 362.8176725235549,
+      "baseYieldPerCellLiters": 95,
+      "sellPricePerLiter": "1.0200",
+      "revenuePerCycle": "18616.0200",
+      "holdingCostPerCycle": "18104.3696",
+      "netPerCycle": "511.6504"
+    },
+    "CILANTRO": {
+      "nameEs": "Cilantro",
+      "family": "HERB",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 326.8176725235549,
+      "baseYieldPerCellLiters": 60,
+      "sellPricePerLiter": "1.3000",
+      "revenuePerCycle": "17335.5000",
+      "holdingCostPerCycle": "16783.1696",
+      "netPerCycle": "552.3304"
+    },
+    "PEREJIL": {
+      "nameEs": "Perejil",
+      "family": "HERB",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 334.8176725235549,
+      "baseYieldPerCellLiters": 66,
+      "sellPricePerLiter": "1.2300",
+      "revenuePerCycle": "17676.3300",
+      "holdingCostPerCycle": "17076.7696",
+      "netPerCycle": "599.5604"
+    },
+    "ALBAHACA": {
+      "nameEs": "Albahaca",
+      "family": "HERB",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 338.8176725235549,
+      "baseYieldPerCellLiters": 58,
+      "sellPricePerLiter": "1.4200",
+      "revenuePerCycle": "17748.5800",
+      "holdingCostPerCycle": "17223.5696",
+      "netPerCycle": "525.0104"
+    },
+    "MANZANILLA": {
+      "nameEs": "Manzanilla",
+      "family": "HERB",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 354.8176725235549,
+      "baseYieldPerCellLiters": 45,
+      "sellPricePerLiter": "1.9900",
+      "revenuePerCycle": "18423.4200",
+      "holdingCostPerCycle": "17810.7696",
+      "netPerCycle": "612.6504"
+    },
+    "CEMPASUCHIL": {
+      "nameEs": "Cempasuchil",
+      "family": "FLOWER",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SUMMER",
+        "AUTUMN"
+      ],
+      "cycleGameHours": 370.8176725235549,
+      "baseYieldPerCellLiters": 70,
+      "sellPricePerLiter": "1.4000",
+      "revenuePerCycle": "19012.0000",
+      "holdingCostPerCycle": "18397.9696",
+      "netPerCycle": "614.0304"
+    },
+    "GIRASOL_ORNAMENTAL": {
+      "nameEs": "Girasol ornamental",
+      "family": "FLOWER",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 382.8176725235549,
+      "baseYieldPerCellLiters": 62,
+      "sellPricePerLiter": "1.7200",
+      "revenuePerCycle": "19487.6000",
+      "holdingCostPerCycle": "18838.3696",
+      "netPerCycle": "649.2304"
+    },
+    "CRISANTEMO": {
+      "nameEs": "Crisantemo",
+      "family": "FLOWER",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 394.8176725235549,
+      "baseYieldPerCellLiters": 58,
+      "sellPricePerLiter": "2.0000",
+      "revenuePerCycle": "20024.0000",
+      "holdingCostPerCycle": "19278.7696",
+      "netPerCycle": "745.2304"
+    },
+    "TULIPAN": {
+      "nameEs": "Tulipan",
+      "family": "FLOWER",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 378.8176725235549,
+      "baseYieldPerCellLiters": 48,
+      "sellPricePerLiter": "2.1600",
+      "revenuePerCycle": "19414.0800",
+      "holdingCostPerCycle": "18691.5696",
+      "netPerCycle": "722.5104"
+    },
+    "DALIA": {
+      "nameEs": "Dalia",
+      "family": "FLOWER",
+      "storageResource": "PRODUCE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 386.8176725235549,
+      "baseYieldPerCellLiters": 52,
+      "sellPricePerLiter": "2.1100",
+      "revenuePerCycle": "19679.9700",
+      "holdingCostPerCycle": "18985.1696",
+      "netPerCycle": "694.8004"
+    },
+    "MAIZ_FORRAJERO": {
+      "nameEs": "Maiz forrajero",
+      "family": "FORAGE",
+      "storageResource": "FORAGE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 349.3417366946779,
+      "baseYieldPerCellLiters": 320,
+      "sellPricePerLiter": "0.2900",
+      "revenuePerCycle": "17335.0400",
+      "holdingCostPerCycle": "17075.0435",
+      "netPerCycle": "259.9965"
+    },
+    "SORGO_FORRAJERO": {
+      "nameEs": "Sorgo forrajero",
+      "family": "FORAGE",
+      "storageResource": "FORAGE_LITERS",
+      "sowingSeasons": [
+        "SPRING",
+        "SUMMER"
+      ],
+      "cycleGameHours": 341.3417366946779,
+      "baseYieldPerCellLiters": 300,
+      "sellPricePerLiter": "0.3000",
+      "revenuePerCycle": "17379.0000",
+      "holdingCostPerCycle": "16781.4435",
+      "netPerCycle": "597.5565"
+    },
+    "AVENA_FORRAJERA": {
+      "nameEs": "Avena forrajera",
+      "family": "FORAGE",
+      "storageResource": "FORAGE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 313.3417366946779,
+      "baseYieldPerCellLiters": 240,
+      "sellPricePerLiter": "0.3200",
+      "revenuePerCycle": "16020.4800",
+      "holdingCostPerCycle": "15753.8435",
+      "netPerCycle": "266.6365"
+    },
+    "CENTENO_FORRAJERO": {
+      "nameEs": "Centeno forrajero",
+      "family": "FORAGE",
+      "storageResource": "FORAGE_LITERS",
+      "sowingSeasons": [
+        "AUTUMN",
+        "WINTER"
+      ],
+      "cycleGameHours": 321.3417366946779,
+      "baseYieldPerCellLiters": 250,
+      "sellPricePerLiter": "0.3200",
+      "revenuePerCycle": "16352.0000",
+      "holdingCostPerCycle": "16047.4435",
+      "netPerCycle": "304.5565"
+    }
+  },
   "weeds": {
     "ratePerGameHourBp": 60,
     "growingGameHours": 78,

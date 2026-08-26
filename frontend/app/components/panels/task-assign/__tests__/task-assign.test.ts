@@ -362,7 +362,7 @@ describe('la prevision de duracion y coste (§91, §104 y §114)', () => {
 
     const preview = wrapper.find('.fw-assign__preview').text();
     expect(preview).toContain('Produccion prevista');
-    expect(preview).toContain(STORAGE_RESOURCE_UNITS.WHEAT_LITERS.displayUnit);
+    expect(preview).toContain(STORAGE_RESOURCE_UNITS.GRAIN_LITERS.displayUnit);
     // Every amount goes through `useFormatting`, which wraps `Money`: two decimals with a
     // comma, and never the raw wire string of four decimals with a point.
     expect(preview).toMatch(/\d,\d{2}/);

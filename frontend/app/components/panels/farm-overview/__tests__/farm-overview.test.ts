@@ -28,6 +28,8 @@ import {
   STORAGE_RESOURCE_UNITS,
   TerrainType,
   realBuildingCost,
+  type FarmDto,
+  type StorageUsage,
 } from '~/shared/index';
 import { useFarmsStore } from '~/stores/farms';
 import { useSelectionStore } from '~/stores/selection';
@@ -85,17 +87,17 @@ describe('el panel de granja', () => {
     expect(text).toContain(`${farm?.machineSlots.used} / ${farm?.machineSlots.total}`);
     expect(text).toContain(`${farm?.workerSlots.used} / ${farm?.workerSlots.total}`);
     // Fungible stock, aggregated per farm (GDD sections 27 and 136).
-    const wheatUnits = STORAGE_RESOURCE_UNITS.WHEAT_LITERS;
+    const wheatUnits = STORAGE_RESOURCE_UNITS.GRAIN_LITERS;
     expect(text).toContain(
       formatQuantity(
-        farm?.wheat.storedUnits ?? 0,
+        grainUsage(farm).storedUnits,
         wheatUnits.displayDivisor,
         wheatUnits.displayUnit,
       ),
     );
     expect(text).toContain(
       formatQuantity(
-        farm?.wheat.capacityUnits ?? 0,
+        grainUsage(farm).capacityUnits,
         wheatUnits.displayDivisor,
         wheatUnits.displayUnit,
       ),
@@ -190,3 +192,9 @@ describe('el panel de granja', () => {
     wrapper.unmount();
   });
 });
+
+/** La ocupacion de la categoria de grano, que es lo que el panel dibuja como silo. */
+function grainUsage(farm: FarmDto | null | undefined): StorageUsage {
+  const row = farm?.storage.find((candidate) => candidate.category === 'GRAIN_LITERS');
+  return row?.usage ?? { storedUnits: 0, reservedUnits: 0, capacityUnits: 0, occupancyBp: 0 };
+}

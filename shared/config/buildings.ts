@@ -34,7 +34,10 @@ export const STORAGE_RESOURCE_UNITS: Readonly<
     { readonly storedUnit: string; readonly displayUnit: string; readonly displayDivisor: number }
   >
 > = {
-  WHEAT_LITERS: { storedUnit: 'L', displayUnit: 'L', displayDivisor: 1 },
+  GRAIN_LITERS: { storedUnit: 'L', displayUnit: 'L', displayDivisor: 1 },
+  FORAGE_LITERS: { storedUnit: 'L', displayUnit: 'L', displayDivisor: 1 },
+  PRODUCE_LITERS: { storedUnit: 'L', displayUnit: 'L', displayDivisor: 1 },
+  INDUSTRIAL_LITERS: { storedUnit: 'L', displayUnit: 'L', displayDivisor: 1 },
   WOOD_M3: { storedUnit: 'dm3', displayUnit: 'm3', displayDivisor: DM3_PER_M3 },
 };
 
@@ -75,7 +78,7 @@ export const BUILDING_CATALOGUE: Readonly<Record<BuildingType, BuildingDefinitio
     footprintCells: 16,
     capacityKind: 'STORAGE',
     capacity: 100_000,
-    capacityResource: 'WHEAT_LITERS',
+    capacityResource: 'GRAIN_LITERS',
     providesRepair: false,
   },
   // GDD sections 28 and 116.
@@ -107,6 +110,48 @@ export const BUILDING_CATALOGUE: Readonly<Record<BuildingType, BuildingDefinitio
   // stacked logs need yard space, so the wood store is the largest footprint of the
   // catalogue together with the garage. The capacity is the 500 m³ of GDD section 136,
   // expressed in the stored unit.
+  // The three stores below are invented, as GDD section 116 only costs the silo. They
+  // are anchored on it: the silo buys 100 000 L of capacity for 10 000 over 16 cells,
+  // that is 0.10 per litre. A hay barn is a roof over bales, so it is cheaper per litre
+  // and needs the largest footprint; a cold store is machinery and pays 0.23 per litre
+  // for a smaller room; a warehouse sits in between and holds what keeps dry.
+  //
+  // One store per category, and never one store for two: a building that granted room
+  // to two categories would either add up litres of unlike goods against one counter or
+  // hand out its capacity twice.
+  HAY_BARN: {
+    type: BuildingType.HAY_BARN,
+    purchasePrice: Money.fromUnits(7_000),
+    widthCells: 6,
+    heightCells: 6,
+    footprintCells: 36,
+    capacityKind: 'STORAGE',
+    capacity: 150_000,
+    capacityResource: 'FORAGE_LITERS',
+    providesRepair: false,
+  },
+  COLD_STORE: {
+    type: BuildingType.COLD_STORE,
+    purchasePrice: Money.fromUnits(14_000),
+    widthCells: 4,
+    heightCells: 5,
+    footprintCells: 20,
+    capacityKind: 'STORAGE',
+    capacity: 60_000,
+    capacityResource: 'PRODUCE_LITERS',
+    providesRepair: false,
+  },
+  WAREHOUSE: {
+    type: BuildingType.WAREHOUSE,
+    purchasePrice: Money.fromUnits(6_000),
+    widthCells: 5,
+    heightCells: 5,
+    footprintCells: 25,
+    capacityKind: 'STORAGE',
+    capacity: 40_000,
+    capacityResource: 'INDUSTRIAL_LITERS',
+    providesRepair: false,
+  },
   WOOD_STORAGE: {
     type: BuildingType.WOOD_STORAGE,
     purchasePrice: Money.fromUnits(12_000),

@@ -28,7 +28,6 @@ import {
   MACHINE_CATALOGUE,
   MachineStatus,
   Money,
-  StorageResource,
   TERRAIN_CODE,
   TerrainType,
   WorkerStatus,
@@ -39,8 +38,9 @@ import {
   type MachineType,
   type PlayerId,
   type World,
+  type StockItem,
 } from '../../shared/index.js';
-import { bearer, registerViaHttp, type Harness } from '../harness.js';
+import { bearer, registerViaHttp, seedStock, type Harness } from '../harness.js';
 
 /** A player with a farm, its stores and whatever assets the case needs. */
 export interface EconomyPlayer {
@@ -160,16 +160,10 @@ async function createStorageBuilding(
 export async function depositStock(
   harness: Harness,
   farmId: string,
-  resource: StorageResource,
+  item: StockItem,
   units: number,
 ): Promise<void> {
-  await harness.prisma.farm.update({
-    where: { id: farmId },
-    data:
-      resource === StorageResource.WHEAT_LITERS
-        ? { storedWheatLiters: units }
-        : { storedWoodDm3: units },
-  });
+  await seedStock(harness, farmId, item, units);
 }
 
 /** An idle machine of a type, at its catalogue price and full condition. */

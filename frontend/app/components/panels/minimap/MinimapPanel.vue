@@ -119,6 +119,7 @@ function repaint(): void {
         : {
             cropCycleState: field.projection.cropCycleState,
             growthProgressBp: bp(field.projection.growthProgressBp),
+            cropId: field.cropId,
           };
     },
     pending: pending.pendingCellKeys,

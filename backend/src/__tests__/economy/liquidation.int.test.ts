@@ -33,13 +33,12 @@ import {
   MachineType,
   Money,
   STARTING_CAPITAL,
-  StorageResource,
   WHEAT,
   bp,
   cropSaleRevenue,
   machineResaleValue,
 } from '../../shared/index.js';
-import { createHarness, type Harness } from '../harness.js';
+import { createHarness, readStock, type Harness } from '../harness.js';
 import {
   advanceAndCatchUp,
   balanceOf,
@@ -108,18 +107,15 @@ afterAll(async () => {
 describe('la liquidacion forzosa', () => {
   it('no se dispara mientras la deuda no supera el umbral del valor liquidable', async () => {
     const player = await createEconomyPlayer(harness, 'liq-below');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 10_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 10_000);
     // The silo alone is worth 6 000 at the resale factor, so 30 % of the holding is well
     // above a debt of 100.
     await forceDebt(player, Money.fromUnits(100), 'below');
 
     await advanceAndCatchUp(harness, player.playerId, SWEEP_PERIOD_GAME_HOURS + 1);
 
-    const farm = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: player.farmId },
-      select: { storedWheatLiters: true },
-    });
-    expect(farm.storedWheatLiters).toBe(10_000);
+    const farm = await readStock(harness, player.farmId, 'WHEAT');
+    expect(farm.storedUnits).toBe(10_000);
     const liquidations = await harness.prisma.ledgerEntry.count({
       where: { playerId: player.playerId, type: LedgerType.LIQUIDATION },
     });
@@ -129,7 +125,7 @@ describe('la liquidacion forzosa', () => {
 
   it('se dispara en el umbral, vende en el orden publicado y se detiene al cubrir la deuda', async () => {
     const player = await createEconomyPlayer(harness, 'liq-threshold');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 10_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 10_000);
     const plowId = await createMachine(harness, player, MachineType.PLOW);
     const seederId = await createMachine(harness, player, MachineType.SEEDER);
 
@@ -188,7 +184,7 @@ describe('la liquidacion forzosa', () => {
 
   it('recorre el orden completo y declara los dos pasos que siguen sin estrategia', async () => {
     const player = await createEconomyPlayer(harness, 'liq-full', { withWorkerHome: true });
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 1_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 1_000);
     const trailerId = await createMachine(harness, player, MachineType.TRAILER);
     const workerId = await createFreeWorker(harness, player, 'Peon liquidable');
 
@@ -240,29 +236,23 @@ describe('la liquidacion forzosa', () => {
 
   it('la dispara el barrido y no el regreso del jugador', async () => {
     const player = await createEconomyPlayer(harness, 'liq-sweep');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 20_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 20_000);
     await forceDebt(player, Money.fromUnits(50_000), 'sweep');
 
     // Coming back without the sweep having fallen due changes nothing, however deep the debt.
     await advanceAndCatchUp(harness, player.playerId, SWEEP_PERIOD_GAME_HOURS - 2);
-    let farm = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: player.farmId },
-      select: { storedWheatLiters: true },
-    });
-    expect(farm.storedWheatLiters).toBe(20_000);
+    let farm = await readStock(harness, player.farmId, 'WHEAT');
+    expect(farm.storedUnits).toBe(20_000);
 
     // Once it does, the same applier liquidates.
     await advanceAndCatchUp(harness, player.playerId, 3);
-    farm = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: player.farmId },
-      select: { storedWheatLiters: true },
-    });
-    expect(farm.storedWheatLiters).toBe(0);
+    farm = await readStock(harness, player.farmId, 'WHEAT');
+    expect(farm.storedUnits).toBe(0);
   });
 
   it('un segundo avance sobre el mismo evento no vuelve a liquidar', async () => {
     const player = await createEconomyPlayer(harness, 'liq-idem');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 5_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 5_000);
     await forceDebt(player, Money.fromUnits(50_000), 'idem');
 
     await advanceAndCatchUp(harness, player.playerId, SWEEP_PERIOD_GAME_HOURS + 1);

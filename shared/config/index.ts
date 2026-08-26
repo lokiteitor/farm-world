@@ -11,7 +11,7 @@ export * from './world.js';
 export * from './time.js';
 export * from './economy.js';
 export * from './curves.js';
-export * from './crops.js';
+export * from './crops/index.js';
 export * from './machines.js';
 export * from './buildings.js';
 export * from './workers.js';

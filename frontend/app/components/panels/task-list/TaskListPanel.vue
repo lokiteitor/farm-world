@@ -138,7 +138,9 @@ function rowOf(task: TaskDto): TaskRow {
       ? null
       : task.operation === 'FELL'
         ? STORAGE_RESOURCE_UNITS.WOOD_M3
-        : STORAGE_RESOURCE_UNITS.WHEAT_LITERS;
+        : // Every farmed category counts in litres, so the unit of a reservation does not
+          // depend on which crop it is for.
+          STORAGE_RESOURCE_UNITS.GRAIN_LITERS;
   return {
     task,
     operationLabel: OPERATION_LABELS[task.operation],

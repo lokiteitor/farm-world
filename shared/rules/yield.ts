@@ -15,7 +15,13 @@
 // through at most nine of them (GDD section 76), the accumulated bias stays below
 // 0.1 % of the level.
 
-import { CROPS, WHEAT, type CropDefinition, type TimedCropCycleState } from '../config/crops.js';
+import {
+  CROPS,
+  WHEAT,
+  type CropDefinition,
+  type LandRates,
+  type TimedCropCycleState,
+} from '../config/crops/index.js';
 import {
   FERTILITY_TO_YIELD_CURVE,
   FERTILIZATION_TO_YIELD_CURVE,
@@ -165,7 +171,12 @@ export interface WeedProjectionInput {
   readonly updatedAtGameMs: GameMs;
   readonly toGameMs: GameMs;
   readonly cropCycleState: CropCycleState;
-  readonly crop: CropDefinition;
+  /**
+   * The rates of the land. A crop definition satisfies it, and so does `FALLOW_LAND`
+   * for a field carrying no crop: GDD section 78 makes weed growth a property of the
+   * land, so this must not require a plant that is not there.
+   */
+  readonly land: LandRates;
 }
 
 /**
@@ -188,7 +199,7 @@ export function projectWeedLevel(
     return input.weedLevelBp;
   }
   const growth = accrueBasisPoints(
-    input.crop.weedGrowthBpPerGameHour,
+    input.land.weedGrowthBpPerGameHour,
     input.updatedAtGameMs,
     input.toGameMs,
   );
@@ -204,7 +215,10 @@ export interface PhasedWeedProjectionInput {
   readonly cropCycleState: CropCycleState;
   /** Instant the field was sown, or null when it carries no crop. */
   readonly seededAtGameMs: GameMs | null;
-  readonly crop: CropDefinition;
+  /** Rates of the land, which apply whether or not anything is growing on it. */
+  readonly land: LandRates;
+  /** The crop, needed only to place the phase boundaries. Null on an unsown field. */
+  readonly crop: CropDefinition | null;
 }
 
 /**
@@ -249,7 +263,7 @@ export function projectWeedLevelAcrossPhases(
         updatedAtGameMs: fromGameMs,
         toGameMs,
         cropCycleState: state,
-        crop: input.crop,
+        land: input.land,
       },
       growthStates,
       maxBp,
@@ -263,7 +277,8 @@ export function projectWeedLevelAcrossPhases(
   const timed = (TIMED_CROP_PHASE_ORDER as readonly CropCycleState[]).includes(
     input.cropCycleState,
   );
-  if (seeded === null || !timed) {
+  const crop = input.crop;
+  if (seeded === null || !timed || crop === null) {
     // None of the remaining states of GDD section 76 moves on by the passage of time: they
     // need a player action or the harvest configuration, so the stretch is a single one.
     accrue(input.cropCycleState, cursor, input.toGameMs);
@@ -280,7 +295,7 @@ export function projectWeedLevelAcrossPhases(
   }
 
   for (let guard = 0; cursor < input.toGameMs && guard < MAX_PHASE_SEGMENTS; guard += 1) {
-    const phase = projectCropPhase(seeded, cursor, input.crop);
+    const phase = projectCropPhase(seeded, cursor, crop);
     const boundary = phase.nextBoundaryGameMs;
     const end = boundary === null || boundary > input.toGameMs ? input.toGameMs : boundary;
     if (end <= cursor) {
@@ -297,7 +312,8 @@ export interface FertilityProjectionInput {
   readonly updatedAtGameMs: GameMs;
   readonly toGameMs: GameMs;
   readonly cropCycleState: CropCycleState;
-  readonly crop: CropDefinition;
+  /** Rates of the land: fallow recovery belongs to the soil, not to a crop. */
+  readonly land: LandRates;
 }
 
 /**
@@ -314,7 +330,7 @@ export function projectFallowFertility(
     return input.fertilityBp;
   }
   const regen = accrueBasisPoints(
-    input.crop.fertilityRegenBpPerGameHourInFallow,
+    input.land.fertilityRegenBpPerGameHourInFallow,
     input.updatedAtGameMs,
     input.toGameMs,
   );

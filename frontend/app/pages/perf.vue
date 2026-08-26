@@ -44,7 +44,7 @@ import {
   type WorldSource,
 } from '~/game/world';
 import { apiCall } from '~/net/api';
-import { CropCycleState, bp } from '~/shared/index';
+import { CropCycleState, CropId, bp } from '~/shared/index';
 import { useFieldsStore } from '~/stores/fields';
 import { useNetStore } from '~/stores/net';
 import { usePendingStore } from '~/stores/pending';
@@ -107,6 +107,7 @@ function offlineSource(): WorldSource {
     fieldState: () => ({
       cropCycleState: CropCycleState.GROWING,
       growthProgressBp: bp(4_200),
+      cropId: CropId.WHEAT,
     }),
   });
 }
@@ -135,6 +136,7 @@ function storeSource(): WorldSource {
         : {
             cropCycleState: field.cropCycleState,
             growthProgressBp: bp(field.projection.growthProgressBp),
+            cropId: field.cropId,
           };
     },
     pendingCells: () => pending.pendingCellKeys,

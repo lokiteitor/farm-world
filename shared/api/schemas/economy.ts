@@ -13,7 +13,7 @@
 // travel: it is an internal guarantee and no client has any use for it.
 
 import { z } from 'zod';
-import { LEDGER_TYPES, LedgerType, StorageResource } from '../../domain/enums.js';
+import { LEDGER_TYPES, LedgerType, StockItem, StorageResource } from '../../domain/enums.js';
 import {
   countSchema,
   cursorSchema,
@@ -35,24 +35,42 @@ import { storageUsageSchema } from './farms.js';
 // ---------------------------------------------------------------------------
 
 /**
- * Stock of one resource on one farm, with the unit it is stored in and the unit the
+ * One pile of a fungible good on one farm, with the unit it is stored in and the unit the
  * interface shows. Wood is stored in cubic decimetres and shown in cubic metres, which
  * is why the divisor travels: the interface divides and the server never does, so a
  * rounded figure cannot leak back into a calculation.
+ *
+ * A line is a pile and not a category, because the sale price belongs to the crop: a farm
+ * holding wheat and barley has two lines against one grain capacity. Piles that hold
+ * nothing are omitted, so the reply is proportional to what the farm has rather than to
+ * the size of the catalogue.
  */
 export const inventoryLineSchema = z.strictObject({
-  resource: z.enum(StorageResource),
+  item: z.enum(StockItem),
+  category: z.enum(StorageResource),
   storedUnit: z.string().min(1),
   displayUnit: z.string().min(1),
   displayDivisor: z.number().int().positive(),
-  usage: storageUsageSchema,
+  storedUnits: storageUnitsSchema,
+  reservedUnits: storageUnitsSchema,
   /** Value of the stock at the fixed sale price (GDD sections 123 and 133). */
   marketValue: moneySchema,
 });
 export type InventoryLine = z.infer<typeof inventoryLineSchema>;
 
+/** Capacity and occupancy of one storage category, which is what the meters draw. */
+export const inventoryCategorySchema = z.strictObject({
+  category: z.enum(StorageResource),
+  storedUnit: z.string().min(1),
+  displayUnit: z.string().min(1),
+  displayDivisor: z.number().int().positive(),
+  usage: storageUsageSchema,
+});
+export type InventoryCategory = z.infer<typeof inventoryCategorySchema>;
+
 export const inventoryFarmSchema = z.strictObject({
   farmId: farmIdSchema,
+  categories: z.array(inventoryCategorySchema),
   lines: z.array(inventoryLineSchema),
 });
 export type InventoryFarm = z.infer<typeof inventoryFarmSchema>;
@@ -68,9 +86,11 @@ export type InventoryReply = z.infer<typeof inventoryReplySchema>;
 // ---------------------------------------------------------------------------
 
 export const marketPriceSchema = z.strictObject({
-  resource: z.enum(StorageResource),
+  item: z.enum(StockItem),
+  /** Category the pile is stored in, so the panel can group the price list. */
+  category: z.enum(StorageResource),
   /**
-   * Price per stored unit, as a decimal string: per litre for wheat (GDD section 82)
+   * Price per stored unit, as a decimal string: per litre for a crop (GDD section 82)
    * and per cubic decimetre for wood, which is the 45 per cubic metre of GDD section
    * 133 divided by a thousand. Quoting per stored unit rather than per display unit is
    * what keeps `revenue = price x quantity` exact in integer arithmetic.
@@ -100,14 +120,16 @@ export type MarketPricesReply = z.infer<typeof marketPricesReplySchema>;
  */
 export const sellBodySchema = z.strictObject({
   farmId: farmIdSchema,
-  resource: z.enum(StorageResource),
-  /** Quantity in the stored unit. Omitted means the whole free stock of that resource. */
+  /** The pile being sold: one crop, or timber. Never a whole category. */
+  item: z.enum(StockItem),
+  /** Quantity in the stored unit. Omitted means the whole stock of that pile. */
   quantityUnits: storageUnitsSchema.positive().optional(),
 });
 export type SellBody = z.infer<typeof sellBodySchema>;
 
 export const sellResultSchema = z.strictObject({
-  resource: z.enum(StorageResource),
+  item: z.enum(StockItem),
+  category: z.enum(StorageResource),
   quantitySoldUnits: storageUnitsSchema,
   revenue: moneySchema,
   balanceAfter: moneySchema,

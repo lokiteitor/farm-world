@@ -18,9 +18,9 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
   CROPS,
+  FALLOW_LAND,
   CROP_CYCLE_TRANSITIONS,
   CropCycleState,
-  CropId,
   bp,
   finalYieldLiters,
   fromWireGameMs,
@@ -130,7 +130,11 @@ export const useFieldsStore = defineStore('fields', () => {
     if (field === undefined) {
       return null;
     }
-    const crop = CROPS[field.cropId ?? CropId.WHEAT];
+    // Un campo sin cultivo no se proyecta como si fuese trigo: no hay planta, y las tasas
+    // que sigue corriendo son las de la tierra (`FALLOW_LAND`). Antes caia a trigo porque
+    // el catalogo solo tenia trigo; con sesenta y dos cultivos eso seria una mentira.
+    const crop = field.cropId === null ? null : CROPS[field.cropId];
+    const land = crop ?? FALLOW_LAND;
     const phase = phaseAt(fieldId, atGameMs);
     const state = phase?.state ?? field.cropCycleState;
 
@@ -144,6 +148,7 @@ export const useFieldsStore = defineStore('fields', () => {
       toGameMs: atGameMs,
       cropCycleState: field.cropCycleState,
       seededAtGameMs: field.seededAtGameMs === null ? null : fromWireGameMs(field.seededAtGameMs),
+      land,
       crop,
     });
     const fertilityBp = projectFallowFertility({
@@ -151,16 +156,19 @@ export const useFieldsStore = defineStore('fields', () => {
       updatedAtGameMs: fromWireGameMs(field.fertilityUpdatedAtGameMs),
       toGameMs: atGameMs,
       cropCycleState: state,
-      crop,
+      land,
     });
     const fertilizationBp = bp(field.fertilizationBp);
-    const expected = finalYieldLiters({
-      cellCount: field.cellCount,
-      crop,
-      fertilityBp,
-      fertilizationBp,
-      weedLevelBp,
-    });
+    const expected =
+      crop === null
+        ? null
+        : finalYieldLiters({
+            cellCount: field.cellCount,
+            crop,
+            fertilityBp,
+            fertilizationBp,
+            weedLevelBp,
+          });
 
     return {
       atGameMs,
@@ -174,7 +182,7 @@ export const useFieldsStore = defineStore('fields', () => {
           ? null
           : fromWireGameMs(field.projection.readyAtGameMs),
       nextBoundaryGameMs: phase?.nextBoundaryGameMs ?? null,
-      expectedYieldLiters: expected.liters,
+      expectedYieldLiters: expected?.liters ?? 0,
     };
   }
 
@@ -185,12 +193,12 @@ export const useFieldsStore = defineStore('fields', () => {
   function expectedYieldAt(fieldId: string, atGameMs: GameMs): YieldBreakdown | null {
     const field = collection.get(fieldId);
     const projection = projectAt(fieldId, atGameMs);
-    if (field === undefined || projection === null) {
+    if (field === undefined || projection === null || field.cropId === null) {
       return null;
     }
     return finalYieldLiters({
       cellCount: field.cellCount,
-      crop: CROPS[field.cropId ?? CropId.WHEAT],
+      crop: CROPS[field.cropId],
       fertilityBp: bp(projection.fertilityBp),
       fertilizationBp: bp(projection.fertilizationBp),
       weedLevelBp: bp(projection.weedLevelBp),

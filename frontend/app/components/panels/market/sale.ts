@@ -11,18 +11,36 @@
 // capacity committed to a harvest that has not arrived (plan section 5.4), not stock;
 // selling grain frees no reservation and the server does not treat it as if it did.
 
-import { ValidationCode, type StorageResource } from '~/shared/index';
+import { CROP_LABELS, STORAGE_CATEGORY_LABELS } from '../legend/vocabulary';
+import { CROPS, ValidationCode, type StockItem, type StorageResource } from '~/shared/index';
 
-/** Name of each tradable resource, in Spanish, with the section that prices it. */
-export const STORAGE_RESOURCE_LABELS: Readonly<Record<StorageResource, string>> = {
-  WHEAT_LITERS: 'Trigo',
-  WOOD_M3: 'Madera',
-};
+/**
+ * Name of each storage category, in Spanish, with the section that prices what it holds.
+ *
+ * A category and no longer a crop: what a farm sells is a pile of one crop, and the name of
+ * that crop comes from `CROP_LABELS`. Repeating sixty two names here would be a second
+ * table of names waiting to disagree with the first.
+ */
+export const STORAGE_RESOURCE_LABELS: Readonly<Record<StorageResource, string>> =
+  STORAGE_CATEGORY_LABELS;
 
 export const STORAGE_RESOURCE_SECTIONS: Readonly<Record<StorageResource, number>> = {
-  WHEAT_LITERS: 123,
+  GRAIN_LITERS: 123,
+  FORAGE_LITERS: 123,
+  PRODUCE_LITERS: 123,
+  INDUSTRIAL_LITERS: 123,
   WOOD_M3: 133,
 };
+
+/** Name of one sellable pile: the crop it came from, or timber. */
+export function stockItemLabel(item: StockItem): string {
+  return item === 'WOOD' ? STORAGE_CATEGORY_LABELS.WOOD_M3 : CROP_LABELS[item];
+}
+
+/** The category a pile belongs to, which is the meter it counts against. */
+export function categoryOfItem(item: StockItem): StorageResource {
+  return item === 'WOOD' ? 'WOOD_M3' : CROPS[item].storageResource;
+}
 
 export interface SaleSituation {
   /** Quantity asked for, in the stored unit of the resource. */

@@ -22,7 +22,6 @@ import {
   MAX_LEDGER_PAGE,
   Money,
   STARTING_CAPITAL,
-  StorageResource,
   ValidationCode,
   gameMs as toGameMsValue,
   type GameMs,
@@ -54,12 +53,12 @@ afterAll(async () => {
 /** A player with `SALE_COUNT` sales behind it, plus the opening entry of GDD section 117. */
 async function playerWithHistory(label: string): Promise<EconomyPlayer> {
   const player = await createEconomyPlayer(harness, label);
-  await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 100 * SALE_COUNT);
+  await depositStock(harness, player.farmId, 'WHEAT', 100 * SALE_COUNT);
   for (let index = 0; index < SALE_COUNT; index += 1) {
     const { statusCode } = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WHEAT_LITERS, quantityUnits: 100 },
+      { farmId: player.farmId, item: 'WHEAT', quantityUnits: 100 },
       `${label}-${index}`,
     );
     expect(statusCode).toBe(200);

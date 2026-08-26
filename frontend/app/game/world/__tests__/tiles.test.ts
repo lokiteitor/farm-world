@@ -6,11 +6,10 @@
 // reshuffle its mosaic.
 
 import { describe, expect, it } from 'vitest';
-import { growthTint } from '../../textures/palette';
+import { cropTint, growthTint } from '../../textures/palette';
 import { TERRAIN_VARIANTS, terrainTileFromIndex } from '../../textures/terrain-atlas';
 import { UsageTile, usageTileIndex, usageTileIndexForCropState } from '../../textures/usage-atlas';
 import {
-  NO_TINT,
   NO_USAGE_TILE,
   chunkTileData,
   terrainTileIndices,
@@ -18,7 +17,7 @@ import {
   usageTileIndices,
 } from '../tiles';
 import { STRANGER, TERRAIN, VIEWER, idxOf, makeChunk, patch } from './fixtures';
-import { CHUNK_SIZE, CropCycleState, LandUse, bp, cellKey } from '~/shared/index';
+import { CHUNK_SIZE, CropCycleState, CropId, LandUse, bp, cellKey } from '~/shared/index';
 
 const CONTEXT = {
   viewerPlayerId: VIEWER,
@@ -104,15 +103,25 @@ describe('usageTileIndices', () => {
       ...CONTEXT,
       fieldState: (fieldId: string) =>
         fieldId === 'f'
-          ? { cropCycleState: CropCycleState.GROWING, growthProgressBp: bp(2500) }
-          : { cropCycleState: CropCycleState.READY_TO_HARVEST, growthProgressBp: bp(10_000) },
+          ? {
+              cropCycleState: CropCycleState.GROWING,
+              growthProgressBp: bp(2500),
+              cropId: CropId.WHEAT,
+            }
+          : {
+              cropCycleState: CropCycleState.READY_TO_HARVEST,
+              growthProgressBp: bp(10_000),
+              cropId: CropId.WHEAT,
+            },
     };
     const { indices, tints } = usageTileIndices(chunk, CHUNK_SIZE, context);
     expect(indices[idxOf(4, 4)]).toBe(usageTileIndexForCropState(CropCycleState.GROWING));
     expect(indices[idxOf(5, 4)]).toBe(usageTileIndexForCropState(CropCycleState.READY_TO_HARVEST));
+    // El trigo esta anclado al final de la rampa, asi que se sigue dibujando exactamente
+    // como antes de que el catalogo creciera.
     expect(tints[idxOf(4, 4)]).toBe(growthTint(bp(2500)));
-    // A state that is not growth carries no tint: the tile already says everything.
-    expect(tints[idxOf(5, 4)]).toBe(NO_TINT);
+    // Fuera del crecimiento, el tinte es el color plano del cultivo.
+    expect(tints[idxOf(5, 4)]).toBe(cropTint(CropId.WHEAT));
   });
 
   it('lets the pending decoration win over everything else', () => {

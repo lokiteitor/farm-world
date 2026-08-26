@@ -40,13 +40,15 @@ import {
   ApiError,
   CROPS,
   CropCycleState,
+  nextSowingWindowGameMs,
+  seasonAtGameMs,
   MACHINE_CATALOGUE,
   MAX_SELECTION_CELLS,
   MIN_CONDITION_TO_ASSIGN,
   MachineRole,
   Money,
   OPERATION_REQUIREMENTS,
-  StorageResource,
+  storageTargetOf,
   TREE_SPECIES_CATALOGUE,
   ValidationCode,
   addGameMs,
@@ -68,13 +70,23 @@ import {
   type MachineType,
   type OperationRequirement,
   type PlayerId,
+  type StockItem,
+  type StorageResource,
   type StorageResource as StorageResourceType,
   type TaskDurationEstimate,
   type TaskOperation,
   type TreeStatus,
   type TreeSpecies,
 } from '../../shared/index.js';
-import { freeStorageUnits, requireFarm, storageUsageOf, type FarmRow } from '../farms/service.js';
+import {
+  CATEGORY_GRANTED_BY,
+  freeStorageUnits,
+  loadFarmStorage,
+  requireFarm,
+  storageUsageOf,
+  type FarmRow,
+  type FarmStorageRow,
+} from '../farms/service.js';
 import {
   cropOf,
   expectedYieldLiters,
@@ -149,6 +161,8 @@ export interface AssignmentEvaluation {
   readonly workerWages: Money;
   readonly conditionLossBp: number;
   readonly storageResource: StorageResourceType | null;
+  /** The pile the deposit lands in: one crop, or timber. Null when nothing is stored. */
+  readonly storageItem: StockItem | null;
   readonly expectedProductionUnits: number | null;
   readonly reservedStorageUnits: number | null;
   readonly overflowUnits: number;
@@ -180,6 +194,9 @@ interface Collector {
   field: FieldRecord | null;
   plot: PlotRecord | null;
   destinationFarm: FarmRow | null;
+  destinationStorage: readonly FarmStorageRow[];
+  /** The pile the task deposits into and the category it competes for, once resolved. */
+  storageTarget: { readonly category: StorageResource; readonly item: StockItem } | null;
   cells: readonly CellCoord[];
   units: number;
   expectedProductionUnits: number | null;
@@ -270,6 +287,8 @@ export async function evaluateAssignment(
     field: null,
     plot: null,
     destinationFarm: null,
+    destinationStorage: [],
+    storageTarget: null,
     cells: [],
     units: 0,
     expectedProductionUnits: null,
@@ -282,7 +301,7 @@ export async function evaluateAssignment(
   checkImplementAvailability(requirement, collector);
   checkWorkerFarm(collector);
   await checkTarget(db, playerId, reading, request, requirement, collector);
-  checkCrop(request, requirement, collector);
+  checkCrop(reading, request, requirement, collector);
   await checkStorage(db, playerId, request, requirement, collector);
 
   return summarise(reading, request, requirement, collector);
@@ -660,13 +679,20 @@ function checkCellsTarget(request: AssignmentRequest, collector: Collector): voi
 /**
  * The crop of a sowing, and only of a sowing.
  *
- * Three rules, and the third is the one that is easy to lose: GDD section 76 marks the
+ * Four rules, and the third is the one that is easy to lose: GDD section 76 marks the
  * transition `PLOWED -> SEEDED` as conditional on the crop, through `requiresCultivation`,
  * and the requirement table lists both origins because wheat admits both. A crop that did
  * require cultivating would have to be refused from `PLOWED`, and the table alone does not
  * say so.
+ *
+ * The fourth is the sowing window. Only the instant of sowing is checked: a cycle that runs
+ * past the end of its season is not penalised, because the world advances while the player
+ * is away and a penalty applied then would be a punishment for having been offline. The
+ * refusal carries the seasons the crop admits and the instant the next one opens, so the
+ * panel can answer "maize is sown in spring, three days from now".
  */
 function checkCrop(
+  reading: ClockReading,
   request: AssignmentRequest,
   requirement: OperationRequirement,
   collector: Collector,
@@ -689,6 +715,19 @@ function checkCrop(
   const crop: CropDefinition | undefined = CROPS[cropId];
   if (crop === undefined) {
     collector.blockers.push(new ApiError(ValidationCode.CROP_UNKNOWN, { entityId: cropId }));
+    return;
+  }
+  const season = seasonAtGameMs(reading.gameNow);
+  if (!crop.sowingSeasons.includes(season)) {
+    const opensAt = nextSowingWindowGameMs(crop.sowingSeasons, reading.gameNow);
+    collector.blockers.push(
+      new ApiError(ValidationCode.CROP_OUT_OF_SEASON, {
+        entityId: cropId,
+        season,
+        allowedSeasons: [...crop.sowingSeasons],
+        ...(opensAt === null ? {} : { nextWindowAtGameMs: String(opensAt) }),
+      }),
+    );
     return;
   }
   const field = collector.field;
@@ -721,10 +760,24 @@ async function checkStorage(
   requirement: OperationRequirement,
   collector: Collector,
 ): Promise<void> {
-  const resource = requirement.requiresStorage;
-  if (resource === null) {
+  if (requirement.requiresStorage === null) {
     return;
   }
+  // A harvest names no crop in its request: the crop is the one standing on the field, and
+  // it decides which store has to have room. Potatoes must not fill the grain silo.
+  const target = storageTargetOf(
+    request.operation,
+    collector.field?.cropId ?? null,
+    CROPS,
+    OPERATION_REQUIREMENTS,
+  );
+  if (target === null) {
+    // The operation stores something but the field carries no crop, which `checkTarget`
+    // already refused through the state machine. Nothing to add.
+    return;
+  }
+  collector.storageTarget = target;
+
   const named = request.destinationFarmId;
   if (named === undefined) {
     collector.blockers.push(
@@ -737,30 +790,29 @@ async function checkStorage(
     return;
   }
   collector.destinationFarm = farm;
+  const storage = await loadFarmStorage(db, [farm.id]);
+  collector.destinationStorage = storage;
 
-  const usage = storageUsageOf(farm, resource);
+  const usage = storageUsageOf(storage, target.category);
   if (usage.capacityUnits <= 0) {
     collector.blockers.push(
       new ApiError(ValidationCode.STORAGE_REQUIRED, {
         entityId: farm.id,
+        entityKind: CATEGORY_GRANTED_BY[target.category],
         availableUnits: 0,
       }),
     );
     return;
   }
-  if (freeStorageUnits(farm, resource) <= 0) {
+  if (freeStorageUnits(storage, target.category) <= 0) {
     collector.blockers.push(
-      new ApiError(
-        resource === StorageResource.WHEAT_LITERS
-          ? ValidationCode.SILO_CAPACITY_EXCEEDED
-          : ValidationCode.WOOD_STORAGE_CAPACITY_EXCEEDED,
-        {
-          entityId: farm.id,
-          occupancy: usage.storedUnits + usage.reservedUnits,
-          capacity: usage.capacityUnits,
-          availableUnits: 0,
-        },
-      ),
+      new ApiError(ValidationCode.STORAGE_CAPACITY_EXCEEDED, {
+        entityId: farm.id,
+        entityKind: CATEGORY_GRANTED_BY[target.category],
+        occupancy: usage.storedUnits + usage.reservedUnits,
+        capacity: usage.capacityUnits,
+        availableUnits: 0,
+      }),
     );
   }
 }
@@ -814,9 +866,9 @@ function summarise(
 
   const production = expectedProduction(reading, requirement, collector, scheduledEndGameMs);
   const free =
-    collector.destinationFarm === null || requirement.requiresStorage === null
+    collector.destinationFarm === null || collector.storageTarget === null
       ? 0
-      : freeStorageUnits(collector.destinationFarm, requirement.requiresStorage);
+      : freeStorageUnits(collector.destinationStorage, collector.storageTarget.category);
   const reserved = production === null ? null : Math.min(production, free);
   const overflow = production === null ? 0 : Math.max(0, production - free);
 
@@ -838,7 +890,8 @@ function summarise(
     operatingCost,
     workerWages,
     conditionLossBp: worstConditionLossBp(machines, duration.durationGameHours),
-    storageResource: requirement.requiresStorage,
+    storageResource: collector.storageTarget?.category ?? null,
+    storageItem: collector.storageTarget?.item ?? null,
     expectedProductionUnits: production,
     reservedStorageUnits: reserved,
     overflowUnits: overflow,

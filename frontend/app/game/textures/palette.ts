@@ -22,6 +22,8 @@
 
 import {
   type BuildingType,
+  type CropId,
+  type CropLook,
   type CropCycleState,
   type LandUse,
   type MachineType,
@@ -54,6 +56,13 @@ export interface CropShades {
   readonly soil: Rgb;
   readonly mark: Rgb;
   readonly markAlt: Rgb;
+}
+
+/** Leaf and harvestable organ of a crop silhouette. */
+export interface CropLookShades {
+  readonly mark: Rgb;
+  readonly markAlt: Rgb;
+  readonly accent: Rgb;
 }
 
 /** Wall, roof and trim of a building of the catalogue (GDD sections 116 and 136). */
@@ -107,6 +116,27 @@ const CROP_PALETTE: Readonly<Record<CropCycleState, CropShades>> = {
   HARVESTED: { soil: 0xa08d5e, mark: 0xc8b482, markAlt: 0x8a7850 },
 };
 
+/**
+ * The seven silhouettes a crop is drawn with.
+ *
+ * `mark` is the leaf or the stem, `markAlt` the harvestable organ while it is still
+ * growing and `accent` the same organ once it is ready. Ripening therefore reads as a
+ * change of colour on the same shape, which is what makes "ready" legible without a
+ * second silhouette.
+ *
+ * These are the shades the tile is drawn with; which crop it is comes from the per cell
+ * tint, so two cereals share this table and differ on the map.
+ */
+const CROP_LOOK_PALETTE: Readonly<Record<CropLook, CropLookShades>> = {
+  SPIKE: { mark: 0x5f9a3f, markAlt: 0x4c7f33, accent: 0xefd989 },
+  POD: { mark: 0x4f8a3a, markAlt: 0x6ea84c, accent: 0xc8d67a },
+  HEAD: { mark: 0x51923c, markAlt: 0x7fae4a, accent: 0xe8c24a },
+  TUBER: { mark: 0x4a8437, markAlt: 0x8a6a3f, accent: 0xc99a4e },
+  ROSETTE: { mark: 0x63a544, markAlt: 0x87c05e, accent: 0xb7d97a },
+  BUSH: { mark: 0x3f7f34, markAlt: 0x5f9a3f, accent: 0xc4442f },
+  BLOOM: { mark: 0x4e8f3d, markAlt: 0x8fbc5a, accent: 0xd96aa8 },
+};
+
 /** Buildings of the catalogue (GDD sections 116 and 136). */
 const BUILDING_PALETTE: Readonly<Record<BuildingType, BuildingShades>> = {
   GARAGE: { wall: 0x5b6570, roof: 0x414a54, trim: 0x8b96a2 },
@@ -114,6 +144,12 @@ const BUILDING_PALETTE: Readonly<Record<BuildingType, BuildingShades>> = {
   WORKER_HOME: { wall: 0xb6a58a, roof: 0x8c4a3c, trim: 0xd8cbb3 },
   WORKSHOP: { wall: 0x7a6a58, roof: 0xb5713a, trim: 0xa2907a },
   WOOD_STORAGE: { wall: 0x8a6b45, roof: 0x5e4630, trim: 0xb08a5c },
+  // The three stores the multi crop catalogue added. Each one reads as what it is before
+  // its label is read: hay is straw over timber, cold is white metal, the warehouse is
+  // plain brick.
+  HAY_BARN: { wall: 0xa8894f, roof: 0x7a5c32, trim: 0xd0b073 },
+  COLD_STORE: { wall: 0xdce4e8, roof: 0x9fb2bb, trim: 0xf2f7f9 },
+  WAREHOUSE: { wall: 0x9c7a63, roof: 0x6b5140, trim: 0xc09a80 },
 };
 
 /** The eight machine types (GDD sections 89 and 134). */
@@ -167,6 +203,9 @@ export const PALETTE = {
   ownedForeign: 0x9b7fc4,
 
   crop: CROP_PALETTE,
+
+  /** The seven silhouettes, which is the axis the usage atlas varies over. */
+  cropLook: CROP_LOOK_PALETTE,
 
   /**
    * Tint ramp of the growth phase (GDD section 80). The progress of a growing
@@ -283,6 +322,85 @@ function lerpChannel(from: Rgb, to: Rgb, shift: number, ratio: number): number {
  * for a ramp between two nearby tones and avoids a colour space conversion on a
  * path that runs once per visible chunk.
  */
+/**
+ * Tint of each crop, which is how sixty two crops share seven silhouettes.
+ *
+ * A tint multiplies the tile, so these are light and only moderately saturated: a dark
+ * tint would swallow the silhouette the atlas went to the trouble of drawing. The hues are
+ * spread inside each family, so two cereals never collide; between families the drawing
+ * already separates them.
+ *
+ * A total `Record`, so a crop added to the catalogue does not compile until it has a colour
+ * instead of rendering as whatever the first entry happens to be.
+ */
+export const CROP_TINTS: Readonly<Record<CropId, Rgb>> = {
+  // Anchored to the end of the growth ramp on purpose, so `growthTintFor('WHEAT', p)` is
+  // exactly `growthTint(p)` and wheat is drawn today as it was drawn before the catalogue
+  // grew. The golden tests of the atlas rest on this.
+  WHEAT: 0xffffff,
+  MAIZ: 0xc7ffd7,
+  CEBADA: 0xe8c7ff,
+  AVENA: 0xfff8c7,
+  CENTENO: 0xc7f6ff,
+  SORGO: 0xffc7e5,
+  TRITICALE: 0xd5ffc7,
+  MIJO: 0xc9c7ff,
+  QUINOA: 0xffdac7,
+  AMARANTO: 0xc7ffea,
+  FRIJOL: 0xf9b2ff,
+  GARBANZO: 0xefffb2,
+  LENTEJA: 0xb2d9ff,
+  CHICHARO: 0xffb2c2,
+  HABA: 0xb2ffb9,
+  SOYA: 0xcfb2ff,
+  CACAHUATE: 0xffe6b2,
+  CANOLA: 0xbdfffc,
+  GIRASOL: 0xffbdee,
+  AJONJOLI: 0xdbffbd,
+  LINAZA: 0xbdc8ff,
+  MOSTAZA: 0xffc5bd,
+  ALGODON: 0xa8ffcd,
+  TABACO: 0xe6a8ff,
+  PAPA: 0xffffb2,
+  JICAMA: 0xb2e8ff,
+  BETABEL: 0xffb2d2,
+  ZANAHORIA: 0xbcffb2,
+  RABANO: 0xc0b2ff,
+  CHIRIVIA: 0xffd6b2,
+  CEBOLLA: 0xb2ffec,
+  AJO: 0xffb2fc,
+  LECHUGA: 0xeaffc2,
+  ESPINACA: 0xc2d8ff,
+  ACELGA: 0xffc2c7,
+  COL: 0xc2ffcf,
+  COLIFLOR: 0xe1c2ff,
+  BROCOLI: 0xfff3c2,
+  PEPINO: 0xadf8ff,
+  CALABACITA: 0xffade0,
+  CALABAZA: 0xc8ffad,
+  MELON: 0xadb0ff,
+  SANDIA: 0xffc2ad,
+  BERENJENA: 0xadffda,
+  TOMATE: 0xf2adff,
+  TOMATILLO: 0xf4ffad,
+  CHILE: 0xadddff,
+  PIMIENTO: 0xffadc5,
+  EJOTE: 0xadffae,
+  CILANTRO: 0xd0bdff,
+  PEREJIL: 0xffe4bd,
+  ALBAHACA: 0xbdfff7,
+  MANZANILLA: 0xffbdf4,
+  CEMPASUCHIL: 0xd4ffa3,
+  GIRASOL_ORNAMENTAL: 0xa3baff,
+  CRISANTEMO: 0xffa8a3,
+  TULIPAN: 0xa3ffc2,
+  DALIA: 0xdda3ff,
+  MAIZ_FORRAJERO: 0xfffbcc,
+  SORGO_FORRAJERO: 0xccf4ff,
+  AVENA_FORRAJERA: 0xffcce5,
+  CENTENO_FORRAJERO: 0xd6ffcc,
+};
+
 export function growthTint(progress: Bp): Rgb {
   const ratio = Math.min(1, Math.max(0, bpToRatio(progress)));
   const from = PALETTE.growth.start;
@@ -292,6 +410,28 @@ export function growthTint(progress: Bp): Rgb {
     (lerpChannel(from, to, 8, ratio) << 8) |
     lerpChannel(from, to, 0, ratio)
   );
+}
+
+/**
+ * Tint of a growing field of one crop.
+ *
+ * The ramp of `growthTint` says how far along the growth is; the crop says which colour it
+ * ramps towards. Both at once, so a young maize field reads as young and as maize.
+ */
+export function growthTintFor(cropId: CropId | null, progress: Bp): Rgb {
+  const target = cropId === null ? PALETTE.growth.end : CROP_TINTS[cropId];
+  const ratio = Math.min(1, Math.max(0, bpToRatio(progress)));
+  const from = PALETTE.growth.start;
+  return (
+    (lerpChannel(from, target, 16, ratio) << 16) |
+    (lerpChannel(from, target, 8, ratio) << 8) |
+    lerpChannel(from, target, 0, ratio)
+  );
+}
+
+/** The tint a crop is drawn with outside the growth ramp. */
+export function cropTint(cropId: CropId | null): Rgb {
+  return cropId === null ? PALETTE.growth.end : CROP_TINTS[cropId];
 }
 
 // ---------------------------------------------------------------------------

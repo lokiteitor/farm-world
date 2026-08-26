@@ -205,7 +205,10 @@ export const MACHINE_CATALOGUE: Readonly<Record<MachineType, MachineDefinition>>
     // restriction. The figure stays in the catalogue because the restriction is
     // planned, not discarded.
     capacity: 12_000,
-    capacityResource: 'WHEAT_LITERS',
+    // Null since the catalogue holds more than one crop: a trailer carries whatever the
+    // field it is working produces, so tying it to one storage category would be wrong
+    // in a way the inactive capacity above never was.
+    capacityResource: null,
     wearRateBpPerGameHour: bp(15),
     repairCostPerConditionPoint: Money.fromString('21.6'),
     compatibleImplements: [],
@@ -281,8 +284,17 @@ export interface OperationRequirement {
   readonly resetsWeedLevel: boolean;
   /** Whether the task must name a crop (GDD sections 89 and 104). */
   readonly requiresCrop: boolean;
-  /** Storage the destination farm must have room for, or null. */
-  readonly requiresStorage: StorageResource | null;
+  /**
+   * Storage the destination farm must have room for, or null.
+   *
+   * `FROM_CROP` means the category is not fixed by the operation but read off the crop
+   * standing on the field, which is what a harvest needs once the catalogue holds sixty
+   * two crops: cutting potatoes must not fill the grain silo. It stays a datum and not a
+   * branch of code, since the table still answers "which store does this need"; one of
+   * the answers is now "whichever the crop says". Resolve it with `storageTargetOf` of
+   * shared/rules/machinery.ts and never by comparing to the literal.
+   */
+  readonly requiresStorage: StorageResource | 'FROM_CROP' | null;
   /**
    * Work speed in units per game hour when neither the implement nor the powered
    * machine sets the pace. Null means the ordinary rule applies: the speed of the
@@ -361,7 +373,7 @@ export const OPERATION_REQUIREMENTS: Readonly<Record<TaskOperation, OperationReq
     // catalogue, which is the one thing the catalogue may not do.
     resetsWeedLevel: false,
     requiresCrop: false,
-    requiresStorage: 'WHEAT_LITERS',
+    requiresStorage: 'FROM_CROP',
     workSpeedOverrideUnitsPerGameHour: null,
   },
   FELL: {

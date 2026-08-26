@@ -105,7 +105,7 @@ import {
   type WelcomeBackTask,
   type WelcomeBackTrees,
 } from '../../shared/index.js';
-import { loadFarms, storageUsageOf } from '../farms/service.js';
+import { loadFarmStorage, loadFarms, storageUsageOf } from '../farms/service.js';
 import { cropOf, loadPlayerFields, nextTimedState } from '../fields/index.js';
 import { MACHINE_REF_TYPE } from '../machinery/index.js';
 import { loadPlayerWorkers } from '../workers/index.js';
@@ -450,6 +450,9 @@ export async function fieldTransitionsIn(
       continue;
     }
     const crop = cropOf(field.cropId);
+    if (crop === null) {
+      continue;
+    }
     let boundary: GameMs = seeded;
     for (const phase of TIMED_CROP_PHASE_ORDER) {
       boundary = addGameMs(boundary, gameHoursToGameMs(crop.phaseDurationsGameHours[phase]));
@@ -626,10 +629,15 @@ export async function storageOf(
   playerId: PlayerId,
 ): Promise<readonly WelcomeBackStorage[]> {
   const farms = await loadFarms(db, playerId);
+  const storage = await loadFarmStorage(
+    db,
+    farms.map((farm) => farm.id),
+  );
   const lines: WelcomeBackStorage[] = [];
   for (const farm of farms) {
+    const own = storage.filter((row) => row.farmId === farm.id);
     for (const resource of STORAGE_RESOURCES) {
-      const usage = storageUsageOf(farm, resource);
+      const usage = storageUsageOf(own, resource);
       if (usage.capacityUnits <= 0) {
         continue;
       }

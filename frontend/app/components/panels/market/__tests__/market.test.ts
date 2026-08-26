@@ -31,12 +31,12 @@ import { formatMoney, formatQuantity } from '~/composables/useFormatting';
 import { MOCK_FARM_ID } from '~/mock/world';
 import {
   CROPS,
+  CROP_IDS,
   CropId,
   Money,
   STORAGE_RESOURCES,
   STORAGE_RESOURCE_UNITS,
   StorageResource,
-  VALIDATION_MESSAGES,
   ValidationCode,
   cropSaleRevenue,
   multiplyByCount,
@@ -93,11 +93,12 @@ describe('el panel de mercado', () => {
     const wrapper = mount(MarketPanel);
     await settle();
 
-    expect(market.prices.length).toBe(STORAGE_RESOURCES.length);
-    const wheat = market.priceOf(StorageResource.WHEAT_LITERS);
+    // Una linea por cultivo del catalogo, mas la madera: el precio es del cultivo.
+    expect(market.prices.length).toBe(CROP_IDS.length + 1);
+    const wheat = market.priceOf('WHEAT');
     expect(wheat).toBeDefined();
     expect(wheat?.pricePerStoredUnit).toBe(Money.toString(CROPS[CropId.WHEAT].sellPricePerLiter));
-    expect(wrapper.text()).toContain(STORAGE_RESOURCE_LABELS.WHEAT_LITERS);
+    expect(wrapper.text()).toContain(STORAGE_RESOURCE_LABELS.GRAIN_LITERS);
     expect(wrapper.text()).toContain('§123');
     wrapper.unmount();
   });
@@ -107,14 +108,17 @@ describe('el panel de mercado', () => {
     const wrapper = mount(MarketPanel);
     await settle();
 
-    const usage = inventory.usageOf(MOCK_FARM_ID, StorageResource.WHEAT_LITERS);
+    // La capacidad va por categoria y las existencias por pila: dos niveles, como el panel.
+    const usage = inventory.usageOf(MOCK_FARM_ID, StorageResource.GRAIN_LITERS);
     expect(usage).not.toBeNull();
-    const units = STORAGE_RESOURCE_UNITS.WHEAT_LITERS;
+    const pile = inventory.lineOf(MOCK_FARM_ID, 'WHEAT');
+    expect(pile).toBeDefined();
+    const units = STORAGE_RESOURCE_UNITS.GRAIN_LITERS;
     expect(wrapper.text()).toContain(
-      formatQuantity(usage?.storedUnits ?? 0, units.displayDivisor, units.displayUnit),
+      formatQuantity(pile?.storedUnits ?? 0, units.displayDivisor, units.displayUnit),
     );
     expect(wrapper.text()).toContain(
-      formatMoney(multiplyByCount(CROPS[CropId.WHEAT].sellPricePerLiter, usage?.storedUnits ?? 0)),
+      formatMoney(multiplyByCount(CROPS.WHEAT.sellPricePerLiter, pile?.storedUnits ?? 0)),
     );
     wrapper.unmount();
   });
@@ -151,15 +155,17 @@ describe('el panel de mercado', () => {
     const wrapper = mount(MarketPanel);
     await settle();
 
-    // The sample world holds no wood and has no wood store, so its line is the empty case.
+    // El mundo de muestra no tiene madera ni almacen de madera, asi que esa categoria es el
+    // caso vacio: se dibuja su medidor, pero no tiene ninguna pila que vender.
     expect(inventory.usageOf(MOCK_FARM_ID, StorageResource.WOOD_M3)?.storedUnits).toBe(0);
+    expect(inventory.lineOf(MOCK_FARM_ID, 'WOOD')).toBeUndefined();
+
+    // Un boton por pila con contenido, no por categoria: solo el trigo se puede vender.
     const buttons = wrapper.findAll('button').filter((button) => button.text() === 'Vender');
-    expect(buttons).toHaveLength(STORAGE_RESOURCES.length);
-    expect(buttons[1]?.attributes('disabled')).toBeDefined();
-    expect(buttons[1]?.attributes('title')).toBe(
-      VALIDATION_MESSAGES[ValidationCode.QUANTITY_NOT_POSITIVE],
-    );
-    expect(wrapper.text()).toContain('Sin existencias que vender.');
+    expect(buttons).toHaveLength(1);
+
+    // Y las categorias vacias lo dicen en vez de ofrecer una venta imposible.
+    expect(wrapper.text()).toContain('Sin almacen construido para esta categoria.');
     wrapper.unmount();
   });
 });

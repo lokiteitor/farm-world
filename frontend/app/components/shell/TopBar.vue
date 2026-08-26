@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The top bar: balance, day, multiplier, payroll, silo, burn rate and connection.
+// The top bar: balance, day, multiplier, payroll, storage, burn rate and connection.
 //
 // Owner: W3-C.
 //
@@ -15,13 +15,14 @@
 // The multiplier is read only. It is a server setting and not a control of the player (GDD
 // section 51, plan section 2.2), and changing it alters the cash burn of everyone at once.
 import { computed } from 'vue';
+import { STORAGE_CATEGORY_LABELS } from '~/components/panels/legend/vocabulary';
 import ConnectionStatus from '~/components/shell/ConnectionStatus.vue';
 import UiButton from '~/components/ui/UiButton.vue';
 import UiStat from '~/components/ui/UiStat.vue';
 import { useFormatting } from '~/composables/useFormatting';
 import { useGameClock } from '~/composables/useGameClock';
 import { useShellUi } from '~/composables/useShellUi';
-import { Money, StorageResource, fromWireGameMs } from '~/shared/index';
+import { Money, fromWireGameMs } from '~/shared/index';
 import { useClockStore } from '~/stores/clock';
 import { useInventoryStore } from '~/stores/inventory';
 import { useMachinesStore } from '~/stores/machines';
@@ -60,9 +61,18 @@ const payrollHint = computed(
   () => `Salarios: ${format.formatRatePerGameHour(workers.totalSalaryPerGameHour)}`,
 );
 
-const siloBp = computed(() => inventory.worstOccupancyBp[StorageResource.WHEAT_LITERS] ?? 0);
+// The fullest store of the player, whichever category it is. One meter and not five:
+// what has to be readable at a glance is whether anything is about to overflow, and with
+// five categories a bar each would be four empty bars and one that matters.
+const siloBp = computed(() => inventory.worstOccupancy?.occupancyBp ?? 0);
 const silo = computed(() => format.formatBp(siloBp.value, 0));
 const siloTone = computed(() => (siloBp.value >= 9_000 ? 'warning' : 'neutral'));
+const siloHint = computed(() => {
+  const worst = inventory.worstOccupancy;
+  return worst === null
+    ? 'Sin almacen construido'
+    : `${STORAGE_CATEGORY_LABELS[worst.category]}: ocupacion, reserva incluida`;
+});
 
 const burn = computed(() => format.formatMoney(player.holdingCostPerGameHour));
 const burnHint = computed(() => {
@@ -97,7 +107,7 @@ const machineCount = computed(() => `${machines.count}`);
       />
       <UiStat label="Plantilla" :value="payroll" :hint="payrollHint" />
       <UiStat label="Maquinaria" :value="machineCount" />
-      <UiStat label="Silo" :value="silo" :tone="siloTone" hint="Ocupacion, reserva incluida" />
+      <UiStat label="Almacen" :value="silo" :tone="siloTone" :hint="siloHint" />
       <UiStat label="Consumo" :value="burn" unit="/h" :tone="burnTone" :hint="burnHint" />
     </div>
 

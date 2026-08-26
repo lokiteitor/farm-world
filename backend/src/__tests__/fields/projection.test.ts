@@ -22,7 +22,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   availableOperations,
-  cropOf,
   expectedYieldLiters,
   nextTimedState,
   phaseBoundaryAfter,
@@ -309,7 +308,7 @@ describe('el ejemplo narrativo de la seccion 84', () => {
 
     // Field #12: HARVESTED -> VIRGIN, fertilidad baja al 85 %, que es el numero que el
     // ejemplo si publica y que el catalogo reproduce.
-    expect(fertilityAfterHarvest(settled.fertilityBp, cropOf('WHEAT'))).toBe(8_500);
+    expect(fertilityAfterHarvest(settled.fertilityBp, WHEAT)).toBe(8_500);
     expect(WHEAT.afterHarvestState).toBe(CropCycleState.VIRGIN);
   });
 

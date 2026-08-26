@@ -16,9 +16,9 @@
 // be a way to have the two levels of detail disagree at exactly the moment the player
 // crosses the threshold.
 
-import { PALETTE, OWNERSHIP_WASH_ALPHA } from '../textures/palette';
+import { PALETTE, OWNERSHIP_WASH_ALPHA, cropTint } from '../textures/palette';
 import { type FieldRenderState, type WorldChunkView } from './source';
-import { LandUse, cellKey, terrainFromCode } from '~/shared/index';
+import { CropCycleState, LandUse, cellKey, terrainFromCode } from '~/shared/index';
 
 /** Bytes per pixel of the thumbnail buffer. */
 const CHANNELS = 4;
@@ -59,7 +59,16 @@ export function thumbnailColourOf(
   }
   if (landUse === LandUse.FIELD) {
     const state = fieldId === null ? undefined : context.fieldState(fieldId);
-    return state === undefined ? PALETTE.crop.VIRGIN.soil : PALETTE.crop[state.cropCycleState].soil;
+    if (state === undefined) {
+      return PALETTE.crop.VIRGIN.soil;
+    }
+    const soil = PALETTE.crop[state.cropCycleState].soil;
+    // The crop tint is mixed in wherever there is a plant, so the minimap tells sixty two
+    // crops apart too. Soil states keep their own colour: at one pixel per cell, tinting
+    // bare ground by what is going to be sown on it would be a promise, not a reading.
+    return PLANT_STATES.includes(state.cropCycleState)
+      ? multiplyColour(soil, cropTint(state.cropId))
+      : soil;
   }
   if (landUse === LandUse.BUILDING) {
     return PALETTE.use.BUILDING;
@@ -87,6 +96,25 @@ export function thumbnailColourOf(
  * transparent pixel would show the canvas background and read as a hole in the world
  * rather than as a cell of any kind.
  */
+/**
+ * States that show a plant, and therefore take the tint of the crop.
+ *
+ * The same four the usage atlas varies its silhouette over, for the same reason.
+ */
+const PLANT_STATES: readonly CropCycleState[] = [
+  CropCycleState.GERMINATING,
+  CropCycleState.GROWING,
+  CropCycleState.READY_TO_HARVEST,
+  CropCycleState.HARVESTED,
+];
+
+/** Two colours multiplied channel by channel, which is what a tint does to a texture. */
+function multiplyColour(base: number, tint: number): number {
+  const channel = (shift: number): number =>
+    Math.round((((base >> shift) & 0xff) * ((tint >> shift) & 0xff)) / 255);
+  return (channel(16) << 16) | (channel(8) << 8) | channel(0);
+}
+
 export function chunkThumbnailPixels(
   chunk: WorldChunkView,
   chunkSize: number,

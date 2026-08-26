@@ -59,8 +59,7 @@ import {
   Money,
   NoticeKind,
   PINE,
-  StorageResource,
-  WHEAT,
+  type StockItem,
   WorkerStatus,
   bp,
   ceilDiv,
@@ -80,9 +79,9 @@ import {
   type WorkerId,
 } from '../../shared/index.js';
 import { buildFarmDto } from '../farms/readModel.js';
-import { loadFarms, storageUsageOf, withdrawStorage } from '../farms/service.js';
+import { loadFarmStock, loadFarms, withdrawStorage, type FarmStockRow } from '../farms/service.js';
 import { debtOf, liquidationTrigger, type LiquidationTrigger } from './debt.js';
-import { SALE_LEDGER_TYPE, pricePerStoredUnit, saleRevenue } from './market.js';
+import { categoryOfItem, SALE_LEDGER_TYPE, pricePerStoredUnit, saleRevenue } from './market.js';
 import { buildInventoryFarms } from './readModel.js';
 
 // ---------------------------------------------------------------------------
@@ -164,6 +163,10 @@ export async function loadLiquidatableHolding(
   playerId: PlayerId,
 ): Promise<LiquidatableHolding> {
   const farms = await loadFarms(tx, playerId);
+  const stock = await loadFarmStock(
+    tx,
+    farms.map((farm) => farm.id),
+  );
   const [machines, buildings, landGroups] = await Promise.all([
     tx.machine.findMany({
       where: {
@@ -203,8 +206,9 @@ export async function loadLiquidatableHolding(
     })),
     buildings: buildings.map((building) => building.type),
     unusedLandCells,
-    storedWheatLiters: farms.reduce((total, farm) => total + farm.storedWheatLiters, 0),
-    storedWoodDm3: farms.reduce((total, farm) => total + farm.storedWoodDm3, 0),
+    // Summed across the farms of the player and per pile: the threshold of plan section
+    // 6.6 asks what the whole holding is worth, and each crop is worth its own price.
+    stock: stockTotals(stock),
   };
 }
 
@@ -265,42 +269,57 @@ async function creditAsset(
  */
 async function liquidateInventory(state: LiquidationState): Promise<void> {
   const farms = await loadFarms(state.tx, state.playerId);
-  for (const farm of farms) {
-    for (const resource of Object.values(StorageResource)) {
-      if (solvent(state)) {
-        return;
-      }
-      const stored = storageUsageOf(farm, resource).storedUnits;
-      if (stored <= 0) {
-        continue;
-      }
-      const priceScaled = Money.toScaled(pricePerStoredUnit(resource));
-      if (priceScaled <= 0n) {
-        continue;
-      }
-      const needed = Number(ceilDiv(Money.toScaled(debtOf(state.balance)), priceScaled));
-      const units = Math.min(stored, needed);
-      if (units <= 0) {
-        continue;
-      }
-      const withdrawal = await withdrawStorage(state.tx, farm.id, resource, units);
-      if (!withdrawal.ok) {
-        continue;
-      }
-      state.touchedFarmIds.add(farm.id);
-      await creditAsset(state, {
-        step: 'INVENTORY',
-        assetKind: 'STOCK',
-        assetId: `${farm.id}:${resource}`,
-        detail: resource,
-        units,
-        proceeds: saleRevenue(resource, units),
-        type: SALE_LEDGER_TYPE[resource],
-        refType: 'FARM',
-        meta: { farmId: farm.id, resource, units, gddSection: 123 },
-      });
+  const piles = await loadFarmStock(
+    state.tx,
+    farms.map((farm) => farm.id),
+  );
+  // One pile at a time, in the order the piles were loaded, which is by farm and then by
+  // item: the sequence has to be deterministic so a liquidation is reproducible.
+  for (const pile of piles) {
+    if (solvent(state)) {
+      return;
     }
+    if (pile.storedUnits <= 0) {
+      continue;
+    }
+    const category = categoryOfItem(pile.item);
+    const priceScaled = Money.toScaled(pricePerStoredUnit(pile.item));
+    if (priceScaled <= 0n) {
+      continue;
+    }
+    const needed = Number(ceilDiv(Money.toScaled(debtOf(state.balance)), priceScaled));
+    const units = Math.min(pile.storedUnits, needed);
+    if (units <= 0) {
+      continue;
+    }
+    const withdrawal = await withdrawStorage(state.tx, pile.farmId, pile.item, category, units);
+    if (!withdrawal.ok) {
+      continue;
+    }
+    state.touchedFarmIds.add(pile.farmId);
+    await creditAsset(state, {
+      step: 'INVENTORY',
+      assetKind: 'STOCK',
+      assetId: `${pile.farmId}:${pile.item}`,
+      detail: pile.item,
+      units,
+      proceeds: saleRevenue(pile.item, units),
+      type: SALE_LEDGER_TYPE[category],
+      refType: 'FARM',
+      meta: { farmId: pile.farmId, item: pile.item, category, units, gddSection: 123 },
+    });
   }
+}
+
+/** The piles of every farm of the player, added up per item. */
+function stockTotals(
+  piles: readonly FarmStockRow[],
+): readonly { readonly item: StockItem; readonly units: number }[] {
+  const totals = new Map<StockItem, number>();
+  for (const pile of piles) {
+    totals.set(pile.item, (totals.get(pile.item) ?? 0) + pile.storedUnits);
+  }
+  return [...totals].map(([item, units]) => ({ item, units }));
 }
 
 /**
@@ -523,10 +542,7 @@ export async function runForcedLiquidation(
   });
   const balanceBefore = toMoney(player.balance);
   const holding = await loadLiquidatableHolding(tx, playerId);
-  const trigger = liquidationTrigger(
-    balanceBefore,
-    liquidationValue(holding, { crop: WHEAT, species: PINE }),
-  );
+  const trigger = liquidationTrigger(balanceBefore, liquidationValue(holding, { species: PINE }));
 
   if (!trigger.triggered) {
     return {

@@ -83,6 +83,7 @@ describe('la proyeccion local de malezas de un campo sembrado', () => {
         toGameMs: instant,
         cropCycleState: CropCycleState.SEEDED,
         seededAtGameMs: SEEDED_AT,
+        land: WHEAT,
         crop: WHEAT,
       });
       const projected = store.projectAt(FIELD_ID, instant);

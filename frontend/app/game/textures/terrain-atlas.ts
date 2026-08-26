@@ -121,7 +121,7 @@ function paintGrass(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.GRASS;
   paintNoise(tile, shades, variant, 0.16);
   const stream = createHashStream(ART_SEED, variant, 1, HASH_SALT.TILE_SHAPE);
-  
+
   // Clustered grass tufts with highlights
   const tufts = 8 + stream.nextIndex(6);
   for (let index = 0; index < tufts; index += 1) {
@@ -157,7 +157,7 @@ function paintForest(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.FOREST;
   paintNoise(tile, shades, variant + 16, 0.2);
   const stream = createHashStream(ART_SEED, variant, 2, HASH_SALT.TILE_SHAPE);
-  
+
   const crowns = 5 + stream.nextIndex(3);
   for (let index = 0; index < crowns; index += 1) {
     const centreX = 5 + stream.nextIndex(TERRAIN_TILE_PX - 10);
@@ -190,13 +190,13 @@ function paintMountain(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.MOUNTAIN;
   paintNoise(tile, shades, variant + 32, 0.22);
   const stream = createHashStream(ART_SEED, variant, 3, HASH_SALT.TILE_SHAPE);
-  
+
   const peaks = 3 + stream.nextIndex(3);
   for (let index = 0; index < peaks; index += 1) {
     const peakX = 5 + stream.nextIndex(TERRAIN_TILE_PX - 10);
     const peakY = 4 + stream.nextIndex(TERRAIN_TILE_PX - 12);
     const height = 6 + stream.nextIndex(6);
-    
+
     for (let row = 0; row < height; row += 1) {
       const halfWidth = Math.ceil(row * 0.7);
       for (let x = peakX - halfWidth; x <= peakX + halfWidth; x += 1) {
@@ -230,13 +230,13 @@ function paintWater(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.WATER;
   paintNoise(tile, shades, variant + 48, 0.15);
   const stream = createHashStream(ART_SEED, variant, 4, HASH_SALT.TILE_SHAPE);
-  
+
   const crests = 6 + stream.nextIndex(4);
   for (let index = 0; index < crests; index += 1) {
     const y = 2 + stream.nextIndex(TERRAIN_TILE_PX - 4);
     const x = 2 + stream.nextIndex(TERRAIN_TILE_PX - 10);
     const length = 5 + stream.nextIndex(6);
-    
+
     for (let step = 0; step < length; step += 1) {
       // Wave crest
       setPixel(tile, x + step, y, shades.accent);

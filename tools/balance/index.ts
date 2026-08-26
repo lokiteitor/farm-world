@@ -32,11 +32,13 @@
 
 import { mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
+import { CROPS } from '../../shared/config/crops/index.js';
+import { CROP_IDS } from '../../shared/domain/enums.js';
 import { Money } from '../../shared/domain/money.js';
 import { SHARED_CONTRACT_VERSION } from '../../shared/index.js';
 import { type BalanceKpis } from '../../shared/rules/balance.js';
 import { renderReport } from './report.js';
-import { evaluateScenarios, MINIMUM_SETUP, SCENARIOS } from './scenarios.js';
+import { evaluateCatalogue, evaluateScenarios, MINIMUM_SETUP, SCENARIOS } from './scenarios.js';
 import { analyseWeeds } from './weeds.js';
 
 /** Directory the report is written to, resolved from this file and never from the cwd. */
@@ -92,8 +94,14 @@ function toJson(kpis: BalanceKpis): Record<string, unknown> {
 
 async function main(): Promise<void> {
   const kpis = evaluateScenarios();
+  const catalogue = evaluateCatalogue();
   const weeds = analyseWeeds(MINIMUM_SETUP.scenario);
-  const markdown = renderReport({ kpis, weeds, contractVersion: SHARED_CONTRACT_VERSION });
+  const markdown = renderReport({
+    kpis,
+    catalogue,
+    weeds,
+    contractVersion: SHARED_CONTRACT_VERSION,
+  });
 
   const data = {
     contractVersion: SHARED_CONTRACT_VERSION,
@@ -102,6 +110,30 @@ async function main(): Promise<void> {
         named.key,
         { title: named.title, kpis: toJson(kpis.get(named.key) as BalanceKpis) },
       ]),
+    ),
+    // A sibling key, so nothing that already read this file has to change. Walked over
+    // `CROP_IDS` and not over the map, so the order of the object is the catalogue order
+    // and the file stays byte for byte deterministic.
+    catalogue: Object.fromEntries(
+      CROP_IDS.map((cropId) => {
+        const crop = CROPS[cropId];
+        const value = catalogue.get(cropId) as BalanceKpis;
+        return [
+          cropId,
+          {
+            nameEs: crop.nameEs,
+            family: crop.family,
+            storageResource: crop.storageResource,
+            sowingSeasons: [...crop.sowingSeasons],
+            cycleGameHours: value.cycleGameHours,
+            baseYieldPerCellLiters: crop.baseYieldPerCellLiters,
+            sellPricePerLiter: Money.toString(crop.sellPricePerLiter),
+            revenuePerCycle: Money.toString(value.revenuePerCycle),
+            holdingCostPerCycle: Money.toString(value.holdingCostPerCycle),
+            netPerCycle: Money.toString(value.netPerCycle),
+          },
+        ];
+      }),
     ),
     weeds: {
       ratePerGameHourBp: weeds.ratePerGameHourBp,

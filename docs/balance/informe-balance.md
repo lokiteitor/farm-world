@@ -220,7 +220,115 @@ aplica sobre el catalogo.
 | B2. Subir el rendimiento | De 18.288 L a 17.993 L por ciclo al precio publicado, lo que con 90 L por celda exigiria un campo de 200 celdas si no hubiera penalizacion. |
 | C. Acortar el ciclo economico | El multiplicador de tiempo es configuracion de servidor (plan seccion 6.1) y no cambia el balance: todos los costes del GDD estan por hora de juego, de modo que acelerar el reloj acelera por igual el ingreso y el gasto. Lo que si acorta el ciclo economico es `growthDuration` de GDD §82. |
 
-## 9. Consecuencias ya implementadas
+## 9. El catalogo de cultivos
+
+Los sesenta y dos cultivos sobre el mismo setup de GDD §117: la misma tierra, los mismos
+edificios, la misma maquinaria y el mismo trabajador. Solo cambia el cultivo, de modo que la
+tabla compara los cultivos y nada mas. El margen por hora es lo que hay que mirar: un ciclo
+largo con mas margen por ciclo puede rendir menos que uno corto que se repite.
+
+### 9.1 Tabla comparativa
+
+| Cultivo | Familia | Almacen | Siembra | Ciclo | Rendimiento (L/celda) | Precio (/L) | Ingreso / ciclo | Coste / ciclo | Margen / ciclo | Margen / hora |
+|---|---|---|---|---|---|---|---|---|---|---|
+| Maiz | Cereales | Grano | Primavera, Verano | 397,34 h | 150 | 0,84 | 19.114,20 $ | 18.836,64 $ | 277,56 $ | 0,7 |
+| Trigo | Cereales | Grano | Primavera, Verano | 325,34 h | 90 | 0,90 | 16.459,20 $ | 16.194,24 $ | 264,96 $ | 0,81 |
+| Cebada | Cereales | Grano | Otonio, Primavera | 317,34 h | 82 | 0,95 | 16.109,15 $ | 15.900,64 $ | 208,51 $ | 0,66 |
+| Avena | Cereales | Grano | Otonio, Primavera | 321,34 h | 85 | 0,94 | 16.331,56 $ | 16.047,44 $ | 284,12 $ | 0,88 |
+| Centeno | Cereales | Grano | Otonio, Invierno | 329,34 h | 88 | 0,94 | 16.609,80 $ | 16.341,04 $ | 268,76 $ | 0,82 |
+| Sorgo | Cereales | Grano | Primavera, Verano | 373,34 h | 130 | 0,83 | 18.310,63 $ | 17.955,84 $ | 354,79 $ | 0,95 |
+| Triticale | Cereales | Grano | Otonio, Primavera | 333,34 h | 95 | 0,89 | 16.782,73 $ | 16.487,84 $ | 294,89 $ | 0,88 |
+| Mijo | Cereales | Grano | Primavera, Verano | 309,34 h | 66 | 1,14 | 15.875,64 $ | 15.607,04 $ | 268,60 $ | 0,87 |
+| Quinoa | Cereales | Grano | Primavera, Verano | 361,34 h | 70 | 1,43 | 17.797,78 $ | 17.515,44 $ | 282,34 $ | 0,78 |
+| Amaranto | Cereales | Grano | Primavera, Verano | 353,34 h | 64 | 1,49 | 17.468,76 $ | 17.221,84 $ | 246,92 $ | 0,7 |
+| Frijol | Legumbres | Grano | Primavera, Verano | 341,34 h | 72 | 1,33 | 17.183,60 $ | 16.781,44 $ | 402,16 $ | 1,18 |
+| Garbanzo | Legumbres | Grano | Primavera, Verano | 349,34 h | 68 | 1,49 | 17.435,98 $ | 17.075,04 $ | 360,94 $ | 1,03 |
+| Lenteja | Legumbres | Grano | Otonio, Invierno | 345,34 h | 60 | 1,65 | 17.349,75 $ | 16.928,24 $ | 421,51 $ | 1,22 |
+| Chicharo | Legumbres | Grano | Otonio, Invierno | 313,34 h | 74 | 1,08 | 16.119,00 $ | 15.753,84 $ | 365,16 $ | 1,17 |
+| Haba | Legumbres | Grano | Otonio, Invierno | 337,34 h | 88 | 1,06 | 16.934,56 $ | 16.634,64 $ | 299,92 $ | 0,89 |
+| Soya | Legumbres | Grano | Primavera, Verano | 369,34 h | 96 | 1,23 | 18.213,84 $ | 17.809,04 $ | 404,80 $ | 1,1 |
+| Cacahuate | Legumbres | Grano | Primavera, Verano | 381,34 h | 78 | 1,65 | 18.635,10 $ | 18.249,44 $ | 385,66 $ | 1,01 |
+| Canola | Oleaginosas | Grano | Otonio | 410,82 h | 82 | 1,43 | 20.356,05 $ | 19.865,97 $ | 490,08 $ | 1,19 |
+| Girasol | Oleaginosas | Grano | Primavera, Verano | 418,82 h | 90 | 1,38 | 20.712,42 $ | 20.159,57 $ | 552,85 $ | 1,32 |
+| Ajonjoli | Oleaginosas | Grano | Primavera, Verano | 402,82 h | 52 | 2,15 | 20.061,65 $ | 19.572,37 $ | 489,28 $ | 1,21 |
+| Linaza | Oleaginosas | Grano | Primavera | 394,82 h | 56 | 1,89 | 19.714,59 $ | 19.278,77 $ | 435,82 $ | 1,1 |
+| Mostaza | Oleaginosas | Grano | Otonio, Primavera | 378,82 h | 58 | 1,66 | 19.154,74 $ | 18.691,57 $ | 463,17 $ | 1,22 |
+| Algodon | Industriales | Industrial | Primavera | 458,82 h | 64 | 2,78 | 22.240,00 $ | 21.627,57 $ | 612,43 $ | 1,33 |
+| Tabaco | Industriales | Industrial | Primavera | 442,82 h | 70 | 2,48 | 21.700,00 $ | 21.040,37 $ | 659,63 $ | 1,49 |
+| Papa | Raices y bulbos | Hortaliza | Primavera, Otonio | 402,82 h | 260 | 0,54 | 20.035,08 $ | 19.572,37 $ | 462,71 $ | 1,15 |
+| Jicama | Raices y bulbos | Hortaliza | Primavera, Otonio | 414,82 h | 210 | 0,76 | 20.619,56 $ | 20.012,77 $ | 606,79 $ | 1,46 |
+| Betabel | Raices y bulbos | Hortaliza | Primavera, Otonio | 390,82 h | 230 | 0,55 | 19.588,25 $ | 19.131,97 $ | 456,28 $ | 1,17 |
+| Zanahoria | Raices y bulbos | Hortaliza | Primavera, Otonio | 378,82 h | 240 | 0,47 | 19.142,16 $ | 18.691,57 $ | 450,59 $ | 1,19 |
+| Rabano | Raices y bulbos | Hortaliza | Primavera, Otonio | 330,82 h | 130 | 0,62 | 17.320,32 $ | 16.929,97 $ | 390,35 $ | 1,18 |
+| Chirivia | Raices y bulbos | Hortaliza | Primavera, Otonio | 398,82 h | 190 | 0,72 | 20.075,04 $ | 19.425,57 $ | 649,47 $ | 1,63 |
+| Cebolla | Raices y bulbos | Hortaliza | Otonio, Invierno | 410,82 h | 220 | 0,69 | 20.432,28 $ | 19.865,97 $ | 566,31 $ | 1,38 |
+| Ajo | Raices y bulbos | Hortaliza | Otonio, Invierno | 434,82 h | 120 | 1,42 | 21.300,00 $ | 20.746,77 $ | 553,23 $ | 1,27 |
+| Lechuga | Hoja | Hortaliza | Otonio, Invierno, Primavera | 338,82 h | 140 | 0,59 | 17.610,32 $ | 17.223,57 $ | 386,75 $ | 1,14 |
+| Espinaca | Hoja | Hortaliza | Otonio, Invierno, Primavera | 334,82 h | 120 | 0,68 | 17.592,96 $ | 17.076,77 $ | 516,19 $ | 1,54 |
+| Acelga | Hoja | Hortaliza | Otonio, Invierno, Primavera | 342,82 h | 130 | 0,66 | 18.018,00 $ | 17.370,37 $ | 647,63 $ | 1,89 |
+| Col | Hoja | Hortaliza | Otonio, Invierno, Primavera | 370,82 h | 190 | 0,53 | 18.992,02 $ | 18.397,97 $ | 594,05 $ | 1,6 |
+| Coliflor | Hoja | Hortaliza | Otonio, Invierno, Primavera | 378,82 h | 160 | 0,66 | 19.155,84 $ | 18.691,57 $ | 464,27 $ | 1,23 |
+| Brocoli | Hoja | Hortaliza | Otonio, Invierno, Primavera | 374,82 h | 150 | 0,69 | 19.023,30 $ | 18.544,77 $ | 478,53 $ | 1,28 |
+| Pepino | Fruto | Hortaliza | Primavera, Verano | 354,82 h | 180 | 0,51 | 18.339,09 $ | 17.810,77 $ | 528,32 $ | 1,49 |
+| Calabacita | Fruto | Hortaliza | Primavera, Verano | 346,82 h | 165 | 0,53 | 17.997,21 $ | 17.517,17 $ | 480,04 $ | 1,38 |
+| Calabaza | Fruto | Hortaliza | Primavera, Verano | 402,82 h | 210 | 0,64 | 20.166,40 $ | 19.572,37 $ | 594,03 $ | 1,47 |
+| Melon | Fruto | Hortaliza | Primavera, Verano | 390,82 h | 175 | 0,70 | 19.786,20 $ | 19.131,97 $ | 654,23 $ | 1,67 |
+| Sandia | Fruto | Hortaliza | Primavera, Verano | 398,82 h | 200 | 0,65 | 20.003,10 $ | 19.425,57 $ | 577,53 $ | 1,45 |
+| Berenjena | Fruto | Hortaliza | Primavera, Verano | 382,82 h | 150 | 0,76 | 19.430,92 $ | 18.838,37 $ | 592,55 $ | 1,55 |
+| Tomate | Fruto | Hortaliza | Primavera, Verano | 386,82 h | 195 | 0,60 | 19.494,60 $ | 18.985,17 $ | 509,43 $ | 1,32 |
+| Tomatillo | Fruto | Hortaliza | Primavera, Verano | 374,82 h | 170 | 0,63 | 19.074,51 $ | 18.544,77 $ | 529,74 $ | 1,41 |
+| Chile | Fruto | Hortaliza | Primavera, Verano | 394,82 h | 125 | 1,00 | 19.871,00 $ | 19.278,77 $ | 592,23 $ | 1,5 |
+| Pimiento | Fruto | Hortaliza | Primavera, Verano | 390,82 h | 135 | 0,91 | 19.842,55 $ | 19.131,97 $ | 710,58 $ | 1,82 |
+| Ejote | Fruto | Hortaliza | Primavera, Verano | 362,82 h | 95 | 1,02 | 18.616,02 $ | 18.104,37 $ | 511,65 $ | 1,41 |
+| Cilantro | Hierbas | Hortaliza | Primavera, Verano, Otonio | 326,82 h | 60 | 1,30 | 17.335,50 $ | 16.783,17 $ | 552,33 $ | 1,69 |
+| Perejil | Hierbas | Hortaliza | Primavera, Verano, Otonio | 334,82 h | 66 | 1,23 | 17.676,33 $ | 17.076,77 $ | 599,56 $ | 1,79 |
+| Albahaca | Hierbas | Hortaliza | Primavera, Verano, Otonio | 338,82 h | 58 | 1,42 | 17.748,58 $ | 17.223,57 $ | 525,01 $ | 1,55 |
+| Manzanilla | Hierbas | Hortaliza | Primavera, Verano, Otonio | 354,82 h | 45 | 1,99 | 18.423,42 $ | 17.810,77 $ | 612,65 $ | 1,73 |
+| Cempasuchil | Flores | Hortaliza | Verano, Otonio | 370,82 h | 70 | 1,40 | 19.012,00 $ | 18.397,97 $ | 614,03 $ | 1,66 |
+| Girasol ornamental | Flores | Hortaliza | Primavera, Verano | 382,82 h | 62 | 1,72 | 19.487,60 $ | 18.838,37 $ | 649,23 $ | 1,7 |
+| Crisantemo | Flores | Hortaliza | Primavera, Verano | 394,82 h | 58 | 2,00 | 20.024,00 $ | 19.278,77 $ | 745,23 $ | 1,89 |
+| Tulipan | Flores | Hortaliza | Otonio, Invierno | 378,82 h | 48 | 2,16 | 19.414,08 $ | 18.691,57 $ | 722,51 $ | 1,91 |
+| Dalia | Flores | Hortaliza | Primavera, Verano | 386,82 h | 52 | 2,11 | 19.679,97 $ | 18.985,17 $ | 694,80 $ | 1,8 |
+| Maiz forrajero | Forrajes | Forraje | Primavera, Verano | 349,34 h | 320 | 0,29 | 17.335,04 $ | 17.075,04 $ | 260,00 $ | 0,74 |
+| Sorgo forrajero | Forrajes | Forraje | Primavera, Verano | 341,34 h | 300 | 0,30 | 17.379,00 $ | 16.781,44 $ | 597,56 $ | 1,75 |
+| Avena forrajera | Forrajes | Forraje | Otonio, Invierno | 313,34 h | 240 | 0,32 | 16.020,48 $ | 15.753,84 $ | 266,64 $ | 0,85 |
+| Centeno forrajero | Forrajes | Forraje | Otonio, Invierno | 321,34 h | 250 | 0,32 | 16.352,00 $ | 16.047,44 $ | 304,56 $ | 0,95 |
+
+### 9.2 Dispersion
+
+La cifra sobre la que se actua. Un catalogo bien afinado tiene los sesenta y dos cerca de la
+mediana; uno roto tiene un cultivo que domina y sesenta y uno que nadie sembraria.
+
+| Magnitud | Margen por hora de juego |
+|---|---|
+| Minimo | 0,66 |
+| Mediana | 1,27 |
+| Maximo | 1,91 |
+| Razon maximo/minimo | 2,903 |
+
+### 9.3 Cultivos fuera de banda
+
+Ninguno se aparta de la mediana en mas de la mitad de su valor. Esta seccion crece solo cuando hay un problema.
+
+### 9.4 Cobertura estacional
+
+Cuantos cultivos de cada familia admite cada estacion. Una estacion sin ningun cultivo viable
+seria un trimestre muerto, y aqui se ve de un vistazo.
+
+| Familia | Primavera | Verano | Otonio | Invierno |
+|---|---|---|---|---|
+| Cereales | 9 | 6 | 4 | 1 |
+| Legumbres | 4 | 4 | 3 | 3 |
+| Oleaginosas | 4 | 2 | 2 | 0 |
+| Industriales | 2 | 0 | 0 | 0 |
+| Raices y bulbos | 6 | 0 | 8 | 2 |
+| Hoja | 6 | 0 | 6 | 6 |
+| Fruto | 11 | 11 | 0 | 0 |
+| Hierbas | 4 | 4 | 4 | 0 |
+| Flores | 3 | 4 | 2 | 1 |
+| Forrajes | 2 | 2 | 2 | 2 |
+
+## 10. Consecuencias ya implementadas
 
 Tras la revision de 2026-08 el deficit ya no es el estado permanente del ciclo, pero el paso
 por deuda sigue siendo parte del diseno: quien compra toda la flota el dia uno devenga mas que

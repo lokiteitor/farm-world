@@ -22,7 +22,9 @@
 // non integer rate, a zero denominator), which is corrupt data and not a domain
 // edge case.
 
+import { GAME_HOURS_PER_SEASON, SEASON_EPOCH_GAME_MS } from '../config/time.js';
 import { type WorldClockAnchor } from '../domain/entities.js';
+import { SEASONS, Season } from '../domain/enums.js';
 import {
   GAME_MS_ZERO,
   MS_PER_GAME_HOUR,
@@ -220,4 +222,87 @@ export function gameMsToGameHours(durationGameMs: bigint): GameHours {
  */
 export function overlapGameHours(a: GameInterval, b: GameInterval): GameHours {
   return gameMsToGameHours(overlapGameMs(a, b));
+}
+
+// ---------------------------------------------------------------------------
+// Seasons
+// ---------------------------------------------------------------------------
+
+/**
+ * Season of the world at a game instant.
+ *
+ * Derived and never stored, exactly like the growth stage of a tree: there is no season
+ * column anywhere, so nothing can drift out of step with the clock. It is a property of
+ * the world and not of the player, taken from the absolute `gameMs`; deriving it from
+ * the player's own `startedAtGameMs` would put two players of one world in different
+ * seasons at the same instant.
+ *
+ * Instants before the season epoch clamp to the first spring rather than counting
+ * backwards, which is the same total treatment the rest of this module gives an instant
+ * before the world epoch.
+ */
+export function seasonAtGameMs(atGameMs: GameMs): Season {
+  // The index is a remainder over the length of the list, so it is always in range; the
+  // fallback exists because the type of an index access says otherwise and a non null
+  // assertion is forbidden here for good reasons.
+  return SEASONS[seasonIndexAt(atGameMs)] ?? Season.SPRING;
+}
+
+/** Game instant the season containing `atGameMs` began at. */
+export function seasonStartGameMs(atGameMs: GameMs): GameMs {
+  const elapsed = elapsedSinceEpoch(atGameMs);
+  const seasonMs = seasonLengthGameMs();
+  return gameMs(SEASON_EPOCH_GAME_MS + (elapsed / seasonMs) * seasonMs);
+}
+
+/** Game instant the next season begins at. Strictly greater than `atGameMs`. */
+export function nextSeasonStartGameMs(atGameMs: GameMs): GameMs {
+  return gameMs(seasonStartGameMs(atGameMs) + seasonLengthGameMs());
+}
+
+/**
+ * Game instant at which `seasons` next admits sowing, or `atGameMs` itself when the
+ * season already does. Null when the window is empty, which the catalogue forbids and
+ * a test enforces, so in practice it never happens.
+ *
+ * It is what turns a refusal into an answer: the panel can say "maize is sown in
+ * spring, three days from now" instead of only saying no.
+ */
+export function nextSowingWindowGameMs(
+  seasons: readonly Season[],
+  atGameMs: GameMs,
+): GameMs | null {
+  if (seasons.length === 0) {
+    return null;
+  }
+  if (seasons.includes(seasonAtGameMs(atGameMs))) {
+    return atGameMs;
+  }
+  let cursor = nextSeasonStartGameMs(atGameMs);
+  // At most one full turn of the wheel: the window is non empty, so one of the four
+  // seasons matches and the loop cannot run past them.
+  for (let step = 1; step < SEASONS.length; step += 1) {
+    if (seasons.includes(seasonAtGameMs(cursor))) {
+      return cursor;
+    }
+    cursor = nextSeasonStartGameMs(cursor);
+  }
+  return null;
+}
+
+/** Length of one season in game milliseconds. */
+function seasonLengthGameMs(): bigint {
+  return BigInt(GAME_HOURS_PER_SEASON) * MS_PER_GAME_HOUR;
+}
+
+/** Game milliseconds elapsed since the season epoch, clamped at zero. */
+function elapsedSinceEpoch(atGameMs: GameMs): bigint {
+  const elapsed = atGameMs - SEASON_EPOCH_GAME_MS;
+  return elapsed > 0n ? elapsed : 0n;
+}
+
+/** Index of the season in `SEASONS`, which is the cycle order. */
+function seasonIndexAt(atGameMs: GameMs): number {
+  const seasonsElapsed = elapsedSinceEpoch(atGameMs) / seasonLengthGameMs();
+  return Number(seasonsElapsed % BigInt(SEASONS.length));
 }

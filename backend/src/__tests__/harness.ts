@@ -48,6 +48,8 @@ import {
   type GameMs,
   type PlayerId,
   type RealMs,
+  type StockItem,
+  type StorageResource,
   type WorldId,
 } from '../shared/index.js';
 
@@ -281,4 +283,62 @@ export async function createFarmFixture(
     select: { id: true },
   });
   return { farmId: farm.id, homeId: home.id, garageId: garage.id };
+}
+
+/**
+ * Pone existencias en una granja, en la pila del bien que se indique.
+ *
+ * Escribe sobre `farm_stock` y deja que el trigger `farm_stock_storage_totals` lleve el
+ * total a `farm_storage`, que es como escribe el propio servidor: una prueba que tocase el
+ * agregado a mano estaria comprobando un estado que la aplicacion no puede producir.
+ *
+ * Existe aqui y no repetido en cada fichero de fixtures porque antes eran diez sitios
+ * escribiendo columnas de la granja, y el siguiente cambio del almacen tendria que
+ * encontrarlos todos otra vez.
+ */
+export async function seedStock(
+  harness: Harness,
+  farmId: string,
+  item: StockItem,
+  units: number,
+  reservedUnits = 0,
+): Promise<void> {
+  await harness.prisma.farmStock.upsert({
+    where: { farmId_item: { farmId, item } },
+    create: { farmId, item, storedUnits: units, reservedUnits },
+    update: { storedUnits: units, reservedUnits },
+  });
+}
+
+/** Vacia las existencias de las granjas de unos jugadores. Para el desmontaje. */
+export async function clearStock(harness: Harness, playerIds: readonly PlayerId[]): Promise<void> {
+  await harness.prisma.farmStock.deleteMany({
+    where: { farm: { playerId: { in: [...playerIds] } } },
+  });
+}
+
+/** Las existencias de una pila, como la base de datos las tiene. */
+export async function readStock(
+  harness: Harness,
+  farmId: string,
+  item: StockItem,
+): Promise<{ storedUnits: number; reservedUnits: number }> {
+  const row = await harness.prisma.farmStock.findUnique({
+    where: { farmId_item: { farmId, item } },
+    select: { storedUnits: true, reservedUnits: true },
+  });
+  return row ?? { storedUnits: 0, reservedUnits: 0 };
+}
+
+/** La ocupacion de una categoria, que es lo que lleva la capacidad y el CHECK. */
+export async function readStorage(
+  harness: Harness,
+  farmId: string,
+  category: StorageResource,
+): Promise<{ storedUnits: number; reservedUnits: number; capacityUnits: number }> {
+  const row = await harness.prisma.farmStorage.findUnique({
+    where: { farmId_category: { farmId, category } },
+    select: { storedUnits: true, reservedUnits: true, capacityUnits: true },
+  });
+  return row ?? { storedUnits: 0, reservedUnits: 0, capacityUnits: 0 };
 }

@@ -42,6 +42,7 @@ import {
   CROPS,
   CROP_CYCLE_TRANSITIONS,
   CropCycleState,
+  FALLOW_LAND,
   FERTILITY_REGEN_STATES,
   TIMED_CROP_PHASE_ORDER,
   WEED_GROWTH_STATES,
@@ -58,6 +59,7 @@ import {
   type CropDefinition,
   type CropId,
   type GameMs,
+  type LandRates,
   type SoilCondition,
   type TaskOperation,
 } from '../../shared/index.js';
@@ -89,22 +91,23 @@ export interface FieldAttributes {
 }
 
 /**
- * Crop whose rates apply to a field with no crop assigned.
+ * The crop of a field, or null when it carries none.
  *
- * GDD section 78 makes weed growth a property of the land, which grows on `VIRGIN` soil
- * with no crop in sight, while GDD section 82 publishes the rate inside the crop
- * definition. With one crop in the MVP (GDD sections 42 and 86) the two readings coincide;
- * the constant exists so that the day a second crop lands, the choice is visible here
- * instead of being a silent `?? WHEAT` in four call sites.
+ * It used to answer with wheat for an unsown field, which made one member of the
+ * catalogue a global constant of the simulation. With sixty two crops that choice would
+ * have been arbitrary, so the rates that apply to bare land now live in `FALLOW_LAND` and
+ * this answers honestly.
  */
-export const FALLOW_RATE_CROP: CropId = 'WHEAT';
-
-/** The crop definition whose rates govern a field, whether or not it is sown. */
 export function cropOf(
   cropId: CropId | null,
   catalogue: Readonly<Record<CropId, CropDefinition>> = CROPS,
-): CropDefinition {
-  return catalogue[cropId ?? FALLOW_RATE_CROP];
+): CropDefinition | null {
+  return cropId === null ? null : catalogue[cropId];
+}
+
+/** The rates that govern a field, whether or not anything is growing on it. */
+export function landRatesOf(crop: CropDefinition | null): LandRates {
+  return crop ?? FALLOW_LAND;
 }
 
 /** Whether a state belongs to the timed part of the cycle (GDD sections 76 and 80). */
@@ -139,7 +142,7 @@ export const MAX_PHASE_SEGMENTS = TIMED_CROP_PHASE_ORDER.length + 2;
  */
 export function phaseSegments(
   field: FieldAttributes,
-  crop: CropDefinition,
+  crop: CropDefinition | null,
   fromGameMs: GameMs,
   toGameMs: GameMs,
 ): readonly PhaseSegment[] {
@@ -147,7 +150,7 @@ export function phaseSegments(
     return [];
   }
   const seeded = field.seededAtGameMs;
-  if (seeded === null || !isTimedPhase(field.cropCycleState)) {
+  if (seeded === null || crop === null || !isTimedPhase(field.cropCycleState)) {
     return [{ state: field.cropCycleState, fromGameMs, toGameMs }];
   }
 
@@ -187,9 +190,12 @@ export function phaseSegments(
 export function phaseBoundaryAfter(
   state: CropCycleState,
   seededAtGameMs: GameMs,
-  crop: CropDefinition,
+  crop: CropDefinition | null,
   phaseOrder: readonly (typeof TIMED_CROP_PHASE_ORDER)[number][] = TIMED_CROP_PHASE_ORDER,
 ): GameMs | null {
+  if (crop === null) {
+    return null;
+  }
   let boundary = seededAtGameMs;
   for (const phase of phaseOrder) {
     boundary = addGameMs(boundary, gameHoursToGameMs(crop.phaseDurationsGameHours[phase]));
@@ -237,7 +243,7 @@ export interface SettledAttributes {
 export function settleWeedLevel(
   field: FieldAttributes,
   toGameMs: GameMs,
-  crop: CropDefinition = cropOf(field.cropId),
+  crop: CropDefinition | null = cropOf(field.cropId),
   growthStates: readonly CropCycleState[] = WEED_GROWTH_STATES,
 ): Bp {
   return projectWeedLevelAcrossPhases(
@@ -247,6 +253,7 @@ export function settleWeedLevel(
       toGameMs,
       cropCycleState: field.cropCycleState,
       seededAtGameMs: field.seededAtGameMs,
+      land: landRatesOf(crop),
       crop,
     },
     growthStates,
@@ -263,7 +270,7 @@ export function settleWeedLevel(
 export function settleFertility(
   field: FieldAttributes,
   toGameMs: GameMs,
-  crop: CropDefinition = cropOf(field.cropId),
+  crop: CropDefinition | null = cropOf(field.cropId),
   regenStates: readonly CropCycleState[] = FERTILITY_REGEN_STATES,
 ): Bp {
   let level = field.fertilityBp;
@@ -274,7 +281,7 @@ export function settleFertility(
         updatedAtGameMs: segment.fromGameMs,
         toGameMs: segment.toGameMs,
         cropCycleState: segment.state,
-        crop,
+        land: landRatesOf(crop),
       },
       regenStates,
     );
@@ -297,7 +304,7 @@ export function settleFertilization(field: FieldAttributes, _toGameMs: GameMs): 
 export function settleAttributes(
   field: FieldAttributes,
   toGameMs: GameMs,
-  crop: CropDefinition = cropOf(field.cropId),
+  crop: CropDefinition | null = cropOf(field.cropId),
 ): SettledAttributes {
   return {
     fertilityBp: settleFertility(field, toGameMs, crop),
@@ -332,15 +339,16 @@ export interface FieldPhaseProjection {
 export function projectFieldPhase(
   field: FieldAttributes,
   atGameMs: GameMs,
-  crop: CropDefinition = cropOf(field.cropId),
+  crop: CropDefinition | null = cropOf(field.cropId),
 ): FieldPhaseProjection {
   const seeded = field.seededAtGameMs;
-  if (seeded === null || !isTimedPhase(field.cropCycleState)) {
+  if (seeded === null || crop === null || !isTimedPhase(field.cropCycleState)) {
     return {
       state: field.cropCycleState,
       enteredAtGameMs: field.stateEnteredAtGameMs,
       nextBoundaryGameMs: null,
-      growthProgressBp: seeded === null ? bp(0) : growthProgressBp(seeded, atGameMs, crop),
+      growthProgressBp:
+        seeded === null || crop === null ? bp(0) : growthProgressBp(seeded, atGameMs, crop),
       readyAtGameMs: null,
     };
   }
@@ -432,13 +440,16 @@ export function availableOperations(
  * `shared/api/schemas/fields.ts` and is what makes the figure useful: on an unsown field it
  * is the planning estimate the interface needs in order to compare two pieces of land, and
  * the state travels beside it so a panel that must not show it can tell. A field with no
- * crop assigned is costed with `FALLOW_RATE_CROP`, for the reason recorded there.
+ * crop yields nothing, which is the honest answer and the one the panel has to draw.
  */
 export function expectedYieldLiters(
   field: FieldAttributes,
   settled: SettledAttributes,
-  crop: CropDefinition = cropOf(field.cropId),
+  crop: CropDefinition | null = cropOf(field.cropId),
 ): number {
+  if (crop === null) {
+    return 0;
+  }
   return finalYieldLiters({
     cellCount: field.cellCount,
     crop,

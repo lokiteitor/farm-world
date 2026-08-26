@@ -3,7 +3,7 @@
 // Owner: W3-C.
 //
 // A farm holds the fungible stock and the buildings hold the counted capacity, which is
-// the asymmetry of plan section 5.4: grain and wood have no individual identity and are
+// the asymmetry of plan section 5.4: what a farm stores has no individual identity and is
 // aggregated per farm, while a machine and a worker do have one and their capacity is
 // checked per building. Both readings arrive in the same reply, so the store keeps the
 // aggregate the server sent rather than recomputing it from the buildings: recomputing
@@ -12,7 +12,7 @@
 
 import { defineStore } from 'pinia';
 import { computed } from 'vue';
-import { STORAGE_RESOURCE_UNITS, StorageResource, type FarmDto } from '~/shared/index';
+import { STORAGE_RESOURCE_UNITS, type FarmDto, type StorageResource } from '~/shared/index';
 import { createCollection } from '~/stores/collection';
 
 export const useFarmsStore = defineStore('farms', () => {
@@ -52,9 +52,7 @@ export const useFarmsStore = defineStore('farms', () => {
     if (farm === undefined) {
       return 0;
     }
-    return resource === StorageResource.WHEAT_LITERS
-      ? farm.wheat.occupancyBp
-      : farm.wood.occupancyBp;
+    return farm.storage.find((row) => row.category === resource)?.usage.occupancyBp ?? 0;
   }
 
   /**
@@ -91,8 +89,7 @@ export const useFarmsStore = defineStore('farms', () => {
     if (farm === undefined) {
       return 0;
     }
-    const units =
-      resource === StorageResource.WHEAT_LITERS ? farm.wheat.storedUnits : farm.wood.storedUnits;
+    const units = farm.storage.find((row) => row.category === resource)?.usage.storedUnits ?? 0;
     return units / STORAGE_RESOURCE_UNITS[resource].displayDivisor;
   }
 

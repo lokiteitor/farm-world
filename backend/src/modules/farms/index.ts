@@ -79,7 +79,7 @@ import {
 import { withConstraintTranslation } from './constraints.js';
 import { footprintCells, planPlacement } from './placement.js';
 import { buildFarmDto, buildFarmsReply, toBuildingDto } from './readModel.js';
-import { requireFarm, storageUsageOf, type BuildingRow } from './service.js';
+import { loadFarmStorage, requireFarm, storageUsageOf, type BuildingRow } from './service.js';
 
 /** Columns of a building row, kept next to the writer that has to fill every one of them. */
 const BUILDING_SELECT = {
@@ -440,7 +440,8 @@ export function registerFarmsRoutes(app: FastifyInstance): void {
       // Checked against stock plus reservation, because a harvest already assigned has
       // committed room it is going to use (plan section 5.4).
       if (found.capacityStorageUnits > 0 && found.storageResource !== null) {
-        const usage = storageUsageOf(farm, found.storageResource);
+        const storage = await loadFarmStorage(tx, [farm.id]);
+        const usage = storageUsageOf(storage, found.storageResource);
         const remaining = usage.capacityUnits - found.capacityStorageUnits;
         if (usage.storedUnits + usage.reservedUnits > remaining) {
           throw new ApiError(ValidationCode.BUILDING_NOT_EMPTY, {

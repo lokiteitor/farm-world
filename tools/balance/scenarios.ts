@@ -24,9 +24,10 @@
 // it moves the instant from which weeds accumulate. It is therefore analysed in `weeds.ts`,
 // where the question can be asked exactly.
 
-import { WHEAT } from '../../shared/config/crops.js';
+import { CROPS, WHEAT } from '../../shared/config/crops/index.js';
 import { STARTING_CAPITAL } from '../../shared/config/economy.js';
 import { WEED_GROWTH_STATES } from '../../shared/config/transitions.js';
+import { CROP_IDS, type CropId } from '../../shared/domain/enums.js';
 import { bp, type Bp } from '../../shared/domain/units.js';
 import {
   balanceKpis,
@@ -86,6 +87,32 @@ export const SCENARIOS: readonly NamedScenario[] = [
   GDD_119_ASSUMPTION,
 ];
 
+/**
+ * The minimum setup run once per crop of the catalogue.
+ *
+ * Same land, same buildings, same machinery and same worker as `MINIMUM_SETUP`: only the
+ * crop changes, so the table it feeds compares the crops and nothing else. It is a `map`
+ * and not new arithmetic, because `balanceKpis` already takes the crop from the scenario.
+ *
+ * `CROP_IDS` is walked explicitly rather than the keys of `CROPS`, so the order of the
+ * report is the catalogue order and not whatever the object literal happens to enumerate.
+ * The report is deterministic byte for byte, and iteration order is one of the three ways
+ * that could quietly stop being true.
+ */
+export const CATALOGUE_SCENARIOS: readonly NamedScenario[] = CROP_IDS.map((cropId) => ({
+  key: `crop:${cropId}`,
+  title: CROPS[cropId].nameEs,
+  purpose: 'El setup minimo de GDD §117 sembrado con este cultivo.',
+  scenario: { ...MINIMUM_SETUP_SCENARIO, cropId },
+}));
+
+/** The KPIs of every crop, keyed by its identifier. */
+export function evaluateCatalogue(): ReadonlyMap<CropId, BalanceKpis> {
+  return new Map(
+    CROP_IDS.map((cropId) => [cropId, balanceKpis({ ...MINIMUM_SETUP_SCENARIO, cropId })]),
+  );
+}
+
 /** The KPIs of every scenario, keyed by the name the report shows. */
 export function evaluateScenarios(): ReadonlyMap<string, BalanceKpis> {
   return new Map(SCENARIOS.map((named) => [named.key, balanceKpis(named.scenario)]));
@@ -100,7 +127,9 @@ export function evaluateScenarios(): ReadonlyMap<string, BalanceKpis> {
  * that list moves the figure instead of leaving the report quoting an old one.
  */
 export function weedGrowingGameHours(scenario: BalanceScenario): number {
-  return cyclePhases(scenario, WHEAT)
+  // The crop of the scenario, not wheat literally: with sixty two crops in the catalogue a
+  // hard coded reference would report the phases of a crop the scenario is not about.
+  return cyclePhases(scenario, CROPS[scenario.cropId] ?? WHEAT)
     .filter((phase) => WEED_GROWTH_STATES.includes(phase.state))
     .reduce((total, phase) => total + phase.gameHours, 0);
 }

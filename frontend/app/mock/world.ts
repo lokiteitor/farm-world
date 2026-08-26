@@ -24,7 +24,9 @@ import {
   BuildingType,
   CROPS,
   CropCycleState,
+  CROP_IDS,
   CropId,
+  STORAGE_RESOURCES,
   DEFAULT_GAME_RATE,
   GAME_HOURS_PER_GAME_DAY,
   GENERATOR_VERSION,
@@ -619,8 +621,15 @@ export function createMockWorld(seed: number = MOCK_SEED): MockWorld {
   const farm: FarmDto = {
     id: MOCK_FARM_ID,
     name: 'Granja del origen',
-    wheat: wheatUsage,
-    wood: woodUsage,
+    storage: STORAGE_RESOURCES.map((category) => ({
+      category,
+      usage:
+        category === StorageResource.GRAIN_LITERS
+          ? wheatUsage
+          : category === StorageResource.WOOD_M3
+            ? woodUsage
+            : usage(0, 0),
+    })),
     machineSlots: {
       used: machines.length,
       total: BUILDING_CATALOGUE[BuildingType.GARAGE].capacity ?? 4,
@@ -643,27 +652,34 @@ export function createMockWorld(seed: number = MOCK_SEED): MockWorld {
     }
   }
 
+  // Dos niveles, como el contrato: un medidor por categoria y una linea por pila. La
+  // muestra siembra dos cultivos de familias distintas para que el selector agrupado y el
+  // mercado de dos niveles sean ejercitables sin servidor.
   const inventory: InventoryFarm[] = [
     {
       farmId: MOCK_FARM_ID,
+      categories: STORAGE_RESOURCES.map((category) => ({
+        category,
+        storedUnit: STORAGE_RESOURCE_UNITS[category].storedUnit,
+        displayUnit: STORAGE_RESOURCE_UNITS[category].displayUnit,
+        displayDivisor: STORAGE_RESOURCE_UNITS[category].displayDivisor,
+        usage:
+          category === StorageResource.GRAIN_LITERS
+            ? wheatUsage
+            : category === StorageResource.WOOD_M3
+              ? woodUsage
+              : usage(0, 0),
+      })),
       lines: [
         {
-          resource: StorageResource.WHEAT_LITERS,
-          storedUnit: STORAGE_RESOURCE_UNITS.WHEAT_LITERS.storedUnit,
-          displayUnit: STORAGE_RESOURCE_UNITS.WHEAT_LITERS.displayUnit,
-          displayDivisor: STORAGE_RESOURCE_UNITS.WHEAT_LITERS.displayDivisor,
-          usage: wheatUsage,
-          marketValue: toWireMoney(
-            multiplyByCount(CROPS[CropId.WHEAT].sellPricePerLiter, wheatStored),
-          ),
-        },
-        {
-          resource: StorageResource.WOOD_M3,
-          storedUnit: STORAGE_RESOURCE_UNITS.WOOD_M3.storedUnit,
-          displayUnit: STORAGE_RESOURCE_UNITS.WOOD_M3.displayUnit,
-          displayDivisor: STORAGE_RESOURCE_UNITS.WOOD_M3.displayDivisor,
-          usage: woodUsage,
-          marketValue: toWireMoney(Money.ZERO),
+          item: 'WHEAT',
+          category: StorageResource.GRAIN_LITERS,
+          storedUnit: STORAGE_RESOURCE_UNITS.GRAIN_LITERS.storedUnit,
+          displayUnit: STORAGE_RESOURCE_UNITS.GRAIN_LITERS.displayUnit,
+          displayDivisor: STORAGE_RESOURCE_UNITS.GRAIN_LITERS.displayDivisor,
+          storedUnits: wheatStored,
+          reservedUnits: 0,
+          marketValue: toWireMoney(multiplyByCount(CROPS.WHEAT.sellPricePerLiter, wheatStored)),
         },
       ],
     },
@@ -779,18 +795,28 @@ export function mockClock(world: MockWorld): ClockDto {
   };
 }
 
+/**
+ * One line per crop of the catalogue, plus timber: the price belongs to the crop, so the
+ * list the panel groups by category is as long as the catalogue.
+ */
 export function mockMarketPrices(): readonly MarketPrice[] {
-  const wheat = CROPS[CropId.WHEAT];
+  const crops = CROP_IDS.map((id): MarketPrice => {
+    const crop = CROPS[id];
+    const units = STORAGE_RESOURCE_UNITS[crop.storageResource];
+    return {
+      item: id,
+      category: crop.storageResource,
+      pricePerStoredUnit: toWireMoney(crop.sellPricePerLiter),
+      storedUnit: units.storedUnit,
+      pricePerDisplayUnit: toWireMoney(crop.sellPricePerLiter),
+      displayUnit: units.displayUnit,
+    };
+  });
   return [
+    ...crops,
     {
-      resource: StorageResource.WHEAT_LITERS,
-      pricePerStoredUnit: toWireMoney(wheat.sellPricePerLiter),
-      storedUnit: STORAGE_RESOURCE_UNITS.WHEAT_LITERS.storedUnit,
-      pricePerDisplayUnit: toWireMoney(wheat.sellPricePerLiter),
-      displayUnit: STORAGE_RESOURCE_UNITS.WHEAT_LITERS.displayUnit,
-    },
-    {
-      resource: StorageResource.WOOD_M3,
+      item: 'WOOD',
+      category: StorageResource.WOOD_M3,
       pricePerStoredUnit: toWireMoney(MOCK_WOOD_PRICE_PER_DM3),
       storedUnit: STORAGE_RESOURCE_UNITS.WOOD_M3.storedUnit,
       pricePerDisplayUnit: toWireMoney(PINE.sellPricePerM3),

@@ -229,7 +229,7 @@ describe('GET /api/session/welcome-back', () => {
     expect(summary.idleWorkers.map((worker) => worker.name)).toEqual(['Bruno']);
 
     // The silo is state and not history, which is the "Silo is 72 % full" line of GDD section 68.
-    const silo = summary.storage.find((line) => line.resource === 'WHEAT_LITERS');
+    const silo = summary.storage.find((line) => line.resource === 'GRAIN_LITERS');
     expect(silo?.capacityUnits).toBeGreaterThan(0);
     expect(silo?.occupancyBp).toBe(0);
   });

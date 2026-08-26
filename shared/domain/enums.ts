@@ -85,12 +85,167 @@ export const SoilCondition = {
 export type SoilCondition = (typeof SoilCondition)[keyof typeof SoilCondition];
 export const SOIL_CONDITIONS: readonly SoilCondition[] = Object.values(SoilCondition);
 
-/** Crops of the catalogue. One crop in the MVP (GDD sections 42 and 86). */
+/**
+ * Crops of the catalogue. Sixty two annual crops of a single destructive harvest,
+ * grouped by family: the arrangement is documentation, since the family a crop
+ * belongs to is a field of its catalogue entry and not a prefix of its name.
+ *
+ * GDD section 42 names eight future crops and section 86 keeps the MVP at one; the
+ * expansion is a deliberate departure recorded in docs/erratas-gdd-stack.md. Wheat
+ * keeps its identifier and every one of its published figures, because the balance
+ * report and the golden tests are anchored on it.
+ *
+ * Perennials, ratooning crops, mushrooms and flooded rice are deliberately absent:
+ * each needs a mechanic the field cycle does not have.
+ */
 export const CropId = {
+  // Cereal
+  MAIZ: 'MAIZ',
   WHEAT: 'WHEAT',
+  CEBADA: 'CEBADA',
+  AVENA: 'AVENA',
+  CENTENO: 'CENTENO',
+  SORGO: 'SORGO',
+  TRITICALE: 'TRITICALE',
+  MIJO: 'MIJO',
+  QUINOA: 'QUINOA',
+  AMARANTO: 'AMARANTO',
+  // Legume
+  FRIJOL: 'FRIJOL',
+  GARBANZO: 'GARBANZO',
+  LENTEJA: 'LENTEJA',
+  CHICHARO: 'CHICHARO',
+  HABA: 'HABA',
+  SOYA: 'SOYA',
+  CACAHUATE: 'CACAHUATE',
+  // Oilseed
+  CANOLA: 'CANOLA',
+  GIRASOL: 'GIRASOL',
+  AJONJOLI: 'AJONJOLI',
+  LINAZA: 'LINAZA',
+  MOSTAZA: 'MOSTAZA',
+  // Industrial
+  ALGODON: 'ALGODON',
+  TABACO: 'TABACO',
+  // Root
+  PAPA: 'PAPA',
+  JICAMA: 'JICAMA',
+  BETABEL: 'BETABEL',
+  ZANAHORIA: 'ZANAHORIA',
+  RABANO: 'RABANO',
+  CHIRIVIA: 'CHIRIVIA',
+  CEBOLLA: 'CEBOLLA',
+  AJO: 'AJO',
+  // Leafy
+  LECHUGA: 'LECHUGA',
+  ESPINACA: 'ESPINACA',
+  ACELGA: 'ACELGA',
+  COL: 'COL',
+  COLIFLOR: 'COLIFLOR',
+  BROCOLI: 'BROCOLI',
+  // Fruiting
+  PEPINO: 'PEPINO',
+  CALABACITA: 'CALABACITA',
+  CALABAZA: 'CALABAZA',
+  MELON: 'MELON',
+  SANDIA: 'SANDIA',
+  BERENJENA: 'BERENJENA',
+  TOMATE: 'TOMATE',
+  TOMATILLO: 'TOMATILLO',
+  CHILE: 'CHILE',
+  PIMIENTO: 'PIMIENTO',
+  EJOTE: 'EJOTE',
+  // Herb
+  CILANTRO: 'CILANTRO',
+  PEREJIL: 'PEREJIL',
+  ALBAHACA: 'ALBAHACA',
+  MANZANILLA: 'MANZANILLA',
+  // Flower
+  CEMPASUCHIL: 'CEMPASUCHIL',
+  GIRASOL_ORNAMENTAL: 'GIRASOL_ORNAMENTAL',
+  CRISANTEMO: 'CRISANTEMO',
+  TULIPAN: 'TULIPAN',
+  DALIA: 'DALIA',
+  // Forage
+  MAIZ_FORRAJERO: 'MAIZ_FORRAJERO',
+  SORGO_FORRAJERO: 'SORGO_FORRAJERO',
+  AVENA_FORRAJERA: 'AVENA_FORRAJERA',
+  CENTENO_FORRAJERO: 'CENTENO_FORRAJERO',
 } as const;
 export type CropId = (typeof CropId)[keyof typeof CropId];
 export const CROP_IDS: readonly CropId[] = Object.values(CropId);
+
+/**
+ * Family of a crop. It groups the catalogue for the interface and, more importantly,
+ * is the key of the baseline every crop derives its redundant magnitudes from
+ * (shared/config/crops/families.ts), so that sixty two entries need sixty two
+ * decisions and not seven hundred invented numbers.
+ *
+ * Not persisted: it is a property of the catalogue, never of a row.
+ */
+export const CropFamily = {
+  CEREAL: 'CEREAL',
+  LEGUME: 'LEGUME',
+  OILSEED: 'OILSEED',
+  INDUSTRIAL: 'INDUSTRIAL',
+  ROOT: 'ROOT',
+  LEAFY: 'LEAFY',
+  FRUITING: 'FRUITING',
+  HERB: 'HERB',
+  FLOWER: 'FLOWER',
+  FORAGE: 'FORAGE',
+} as const;
+export type CropFamily = (typeof CropFamily)[keyof typeof CropFamily];
+export const CROP_FAMILIES: readonly CropFamily[] = Object.values(CropFamily);
+
+/**
+ * Silhouette a crop is drawn with. Deliberately coarser than the family, because two
+ * families can share a drawing: what the canvas has to convey at sixteen pixels is
+ * the shape of the plant, and the crop itself is told apart by its tint.
+ *
+ * Four of the eight cycle states show no plant at all, so the atlas only varies over
+ * the other four: seven looks times four states plus the fifteen tiles that already
+ * exist (plan section 4.1). Not persisted.
+ */
+export const CropLook = {
+  /** Cereals and forages: an eared stalk. */
+  SPIKE: 'SPIKE',
+  /** Pulses: a low bush carrying pods. */
+  POD: 'POD',
+  /** Oilseeds: a single tall flower head. */
+  HEAD: 'HEAD',
+  /** Roots and bulbs: foliage over a mounded ridge. */
+  TUBER: 'TUBER',
+  /** Leafy crops: a ground hugging rosette. */
+  ROSETTE: 'ROSETTE',
+  /** Fruiting and industrial crops: a bush with hanging fruit. */
+  BUSH: 'BUSH',
+  /** Flowers and herbs: slender stems with blossoms. */
+  BLOOM: 'BLOOM',
+} as const;
+export type CropLook = (typeof CropLook)[keyof typeof CropLook];
+export const CROP_LOOKS: readonly CropLook[] = Object.values(CropLook);
+
+/**
+ * Season of the world (GDD section 82, where it is listed as future work, and section
+ * 86, which puts it outside the strict MVP). It is added here as a pure derivation of
+ * the world clock, with no dynamic weather and no yield modifier, which is what keeps
+ * the reason section 86 gives for the exclusion satisfied; the departure is recorded
+ * in docs/erratas-gdd-stack.md.
+ *
+ * Not persisted, and that is the whole point: the season is always a function of
+ * `gameMs`, exactly as a tree stage is always a function of its planting instant
+ * (backend/prisma/schema.prisma, `TreeGrowthStage`). Nothing can drift.
+ */
+export const Season = {
+  SPRING: 'SPRING',
+  SUMMER: 'SUMMER',
+  AUTUMN: 'AUTUMN',
+  WINTER: 'WINTER',
+} as const;
+export type Season = (typeof Season)[keyof typeof Season];
+/** The four seasons in cycle order, which is the order the clock advances them. */
+export const SEASONS: readonly Season[] = Object.values(Season);
 
 // ---------------------------------------------------------------------------
 // Machinery
@@ -208,6 +363,12 @@ export const BuildingType = {
   WORKER_HOME: 'WORKER_HOME',
   WORKSHOP: 'WORKSHOP',
   WOOD_STORAGE: 'WOOD_STORAGE',
+  /** Bales and silage of the forage crops. */
+  HAY_BARN: 'HAY_BARN',
+  /** Roots, leaves, fruit, herbs and cut flowers, all of them perishable. */
+  COLD_STORE: 'COLD_STORE',
+  /** Cotton and tobacco, which keep dry and need neither cold nor a silo. */
+  WAREHOUSE: 'WAREHOUSE',
 } as const;
 export type BuildingType = (typeof BuildingType)[keyof typeof BuildingType];
 export const BUILDING_TYPES: readonly BuildingType[] = Object.values(BuildingType);
@@ -215,13 +376,47 @@ export const BUILDING_TYPES: readonly BuildingType[] = Object.values(BuildingTyp
 /**
  * Fungible resources held in storage. They are aggregated per farm and not per
  * building, because they have no individual identity (plan section 5.4).
+ *
+ * With sixty two crops the resource stops being the crop and becomes the *category*
+ * that decides which building can hold it. The relation to the building stays one to
+ * one, which is what `BuildingDefinition.capacityResource` already assumes: a store
+ * that granted room to two categories would have to either add up units of unlike
+ * goods or hand out its capacity twice.
+ *
+ * Every farmed category counts in litres, exactly as wheat already did. A second unit
+ * would fork the yield formula and the price type for no gain in play; wood keeps its
+ * cubic decimetre because its catalogue prices by cubic metre.
  */
 export const StorageResource = {
-  WHEAT_LITERS: 'WHEAT_LITERS',
+  /** Cereals, pulses and oilseeds. Held in the silo of GDD section 27. */
+  GRAIN_LITERS: 'GRAIN_LITERS',
+  /** Forage crops. Held in the hay barn. */
+  FORAGE_LITERS: 'FORAGE_LITERS',
+  /** Roots, leaves, fruit, herbs and flowers. Held in the cold store. */
+  PRODUCE_LITERS: 'PRODUCE_LITERS',
+  /** Cotton and tobacco. Held in the warehouse. */
+  INDUSTRIAL_LITERS: 'INDUSTRIAL_LITERS',
+  /** Timber (GDD section 136). */
   WOOD_M3: 'WOOD_M3',
 } as const;
 export type StorageResource = (typeof StorageResource)[keyof typeof StorageResource];
 export const STORAGE_RESOURCES: readonly StorageResource[] = Object.values(StorageResource);
+
+/**
+ * A fungible good as it sits in a farm's stock: one pile per crop, plus timber.
+ *
+ * The category above answers "which building may hold this"; the item answers "what
+ * exactly is this, and therefore what is it worth". Both are needed because the price
+ * belongs to the crop: pricing by category would make the twenty two crops of
+ * `GRAIN_LITERS` worth the same per litre, and the player would always sow whichever
+ * yields the most litres per hour, collapsing sixty two crops into four decisions.
+ */
+export const StockItem = {
+  ...CropId,
+  WOOD: 'WOOD',
+} as const;
+export type StockItem = (typeof StockItem)[keyof typeof StockItem];
+export const STOCK_ITEMS: readonly StockItem[] = Object.values(StockItem);
 
 // ---------------------------------------------------------------------------
 // Forestry
@@ -498,14 +693,14 @@ export const ValidationCode = {
   FIELD_MERGE_INCOMPATIBLE: 'FIELD_MERGE_INCOMPATIBLE',
   FIELD_SPLIT_INCOMPLETE: 'FIELD_SPLIT_INCOMPLETE',
   CROP_UNKNOWN: 'CROP_UNKNOWN',
+  CROP_OUT_OF_SEASON: 'CROP_OUT_OF_SEASON',
 
   // Farm and buildings
   BUILDING_FOOTPRINT_OVERLAPS: 'BUILDING_FOOTPRINT_OVERLAPS',
   BUILDING_NOT_EMPTY: 'BUILDING_NOT_EMPTY',
   GARAGE_CAPACITY_EXCEEDED: 'GARAGE_CAPACITY_EXCEEDED',
   HOME_CAPACITY_EXCEEDED: 'HOME_CAPACITY_EXCEEDED',
-  SILO_CAPACITY_EXCEEDED: 'SILO_CAPACITY_EXCEEDED',
-  WOOD_STORAGE_CAPACITY_EXCEEDED: 'WOOD_STORAGE_CAPACITY_EXCEEDED',
+  STORAGE_CAPACITY_EXCEEDED: 'STORAGE_CAPACITY_EXCEEDED',
   WORKSHOP_REQUIRED: 'WORKSHOP_REQUIRED',
   STORAGE_REQUIRED: 'STORAGE_REQUIRED',
 
@@ -591,14 +786,13 @@ export const VALIDATION_MESSAGES: Readonly<Record<ValidationCode, string>> = {
   FIELD_MERGE_INCOMPATIBLE: 'Los campos indicados no son compatibles para fusionarse.',
   FIELD_SPLIT_INCOMPLETE: 'La division propuesta no produce dos campos contiguos y completos.',
   CROP_UNKNOWN: 'El cultivo indicado no figura en el catalogo.',
+  CROP_OUT_OF_SEASON: 'El cultivo indicado no se siembra en la estacion vigente.',
 
   BUILDING_FOOTPRINT_OVERLAPS: 'La huella del edificio solapa con otro uso del suelo.',
   BUILDING_NOT_EMPTY: 'El edificio conserva contenido asignado y no puede retirarse.',
   GARAGE_CAPACITY_EXCEEDED: 'No queda plaza libre de garaje.',
   HOME_CAPACITY_EXCEEDED: 'No queda plaza libre de vivienda para trabajadores.',
-  SILO_CAPACITY_EXCEEDED: 'La capacidad de silo disponible no admite la cantidad prevista.',
-  WOOD_STORAGE_CAPACITY_EXCEEDED:
-    'La capacidad de almacen de madera disponible no admite el volumen previsto.',
+  STORAGE_CAPACITY_EXCEEDED: 'La capacidad de almacen disponible no admite la cantidad prevista.',
   WORKSHOP_REQUIRED: 'La reparacion exige un taller en la granja.',
   STORAGE_REQUIRED: 'La operacion exige almacenamiento con capacidad en la granja de destino.',
 

@@ -132,9 +132,85 @@ enum SoilCondition {
   COMPACTED
 }
 
-/// Crops of the catalogue. One crop in the MVP (GDD sections 42 and 86).
+/// Crops of the catalogue: sixty two annual crops of a single destructive harvest,
+/// grouped by family (GDD sections 42, 82 and 86; the expansion beyond the one crop
+/// of the MVP is recorded in docs/erratas-gdd-stack.md).
+///
+/// The order is the catalogue order and it matters: adding a value to a PostgreSQL
+/// enum is cheap, renaming or removing one is not.
 enum CropId {
+  // Cereal
+  MAIZ
   WHEAT
+  CEBADA
+  AVENA
+  CENTENO
+  SORGO
+  TRITICALE
+  MIJO
+  QUINOA
+  AMARANTO
+  // Legume
+  FRIJOL
+  GARBANZO
+  LENTEJA
+  CHICHARO
+  HABA
+  SOYA
+  CACAHUATE
+  // Oilseed
+  CANOLA
+  GIRASOL
+  AJONJOLI
+  LINAZA
+  MOSTAZA
+  // Industrial
+  ALGODON
+  TABACO
+  // Root
+  PAPA
+  JICAMA
+  BETABEL
+  ZANAHORIA
+  RABANO
+  CHIRIVIA
+  CEBOLLA
+  AJO
+  // Leafy
+  LECHUGA
+  ESPINACA
+  ACELGA
+  COL
+  COLIFLOR
+  BROCOLI
+  // Fruiting
+  PEPINO
+  CALABACITA
+  CALABAZA
+  MELON
+  SANDIA
+  BERENJENA
+  TOMATE
+  TOMATILLO
+  CHILE
+  PIMIENTO
+  EJOTE
+  // Herb
+  CILANTRO
+  PEREJIL
+  ALBAHACA
+  MANZANILLA
+  // Flower
+  CEMPASUCHIL
+  GIRASOL_ORNAMENTAL
+  CRISANTEMO
+  TULIPAN
+  DALIA
+  // Forage
+  MAIZ_FORRAJERO
+  SORGO_FORRAJERO
+  AVENA_FORRAJERA
+  CENTENO_FORRAJERO
 }
 
 // ---------------------------------------------------------------------------
@@ -222,13 +298,89 @@ enum BuildingType {
   WORKER_HOME
   WORKSHOP
   WOOD_STORAGE
+  HAY_BARN
+  COLD_STORE
+  WAREHOUSE
 }
 
-/// Fungible resources held in storage, aggregated per farm because they have no
-/// individual identity (plan section 5.4).
+/// Storage categories: what a store may hold, and therefore what has to be built
+/// before a crop can be harvested at all. One category per building, never two, so a
+/// counter never adds up litres of unlike goods (shared/domain/enums.ts).
 enum StorageResource {
-  WHEAT_LITERS
+  GRAIN_LITERS
+  FORAGE_LITERS
+  PRODUCE_LITERS
+  INDUSTRIAL_LITERS
   WOOD_M3
+}
+
+/// A fungible good as it sits in stock: one pile per crop, plus timber. The category
+/// above answers which building may hold it; this answers what it is worth, because
+/// the sale price belongs to the crop and not to the category.
+enum StockItem {
+  MAIZ
+  WHEAT
+  CEBADA
+  AVENA
+  CENTENO
+  SORGO
+  TRITICALE
+  MIJO
+  QUINOA
+  AMARANTO
+  FRIJOL
+  GARBANZO
+  LENTEJA
+  CHICHARO
+  HABA
+  SOYA
+  CACAHUATE
+  CANOLA
+  GIRASOL
+  AJONJOLI
+  LINAZA
+  MOSTAZA
+  ALGODON
+  TABACO
+  PAPA
+  JICAMA
+  BETABEL
+  ZANAHORIA
+  RABANO
+  CHIRIVIA
+  CEBOLLA
+  AJO
+  LECHUGA
+  ESPINACA
+  ACELGA
+  COL
+  COLIFLOR
+  BROCOLI
+  PEPINO
+  CALABACITA
+  CALABAZA
+  MELON
+  SANDIA
+  BERENJENA
+  TOMATE
+  TOMATILLO
+  CHILE
+  PIMIENTO
+  EJOTE
+  CILANTRO
+  PEREJIL
+  ALBAHACA
+  MANZANILLA
+  CEMPASUCHIL
+  GIRASOL_ORNAMENTAL
+  CRISANTEMO
+  TULIPAN
+  DALIA
+  MAIZ_FORRAJERO
+  SORGO_FORRAJERO
+  AVENA_FORRAJERA
+  CENTENO_FORRAJERO
+  WOOD
 }
 
 // ---------------------------------------------------------------------------
@@ -669,27 +821,59 @@ model Farm {
   playerId String @db.Uuid
   name     String
 
-  storedWheatLiters   Int @default(0)
-  reservedWheatLiters Int @default(0)
-  capacityWheatLiters Int @default(0)
-
-  storedWoodDm3   Int @default(0)
-  reservedWoodDm3 Int @default(0)
-  capacityWoodDm3 Int @default(0)
-
   createdAtGameMs BigInt
   disposedGameMs  BigInt?
 
-  player      Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player      Player        @relation(fields: [playerId], references: [id], onDelete: Cascade)
   buildings   Building[]
   fields      Field[]
   machines    Machine[]
   workers     Worker[]
   forestPlots ForestPlot[]
   tasks       Task[]
+  storage     FarmStorage[]
+  stock       FarmStock[]
 
   @@index([playerId])
   @@map("farms")
+}
+
+/// Capacity and occupancy of one storage category on one farm.
+///
+/// This is the row the writers serialise on and the row that carries the CHECK, which
+/// is the same "counter plus CHECK" shape the garage and the worker home already use:
+/// two harvests landing at once cannot both see room that only one of them can have.
+/// `capacityUnits` is maintained by a trigger from the buildings, exactly as the
+/// columns it replaces on `farms` were.
+model FarmStorage {
+  farmId        String          @db.Uuid
+  category      StorageResource
+  storedUnits   Int             @default(0)
+  reservedUnits Int             @default(0)
+  capacityUnits Int             @default(0)
+
+  farm Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  @@id([farmId, category])
+  @@map("farm_storage")
+}
+
+/// The breakdown behind `FarmStorage`: one pile per fungible good.
+///
+/// It exists because the sale price belongs to the crop and not to the category, so
+/// stock has to remember what it came from. Its rows always add up to the aggregate,
+/// which a trigger recomputes rather than increments.
+model FarmStock {
+  farmId        String    @db.Uuid
+  item          StockItem
+  storedUnits   Int       @default(0)
+  reservedUnits Int       @default(0)
+
+  farm Farm @relation(fields: [farmId], references: [id], onDelete: Cascade)
+
+  @@id([farmId, item])
+  @@index([farmId])
+  @@map("farm_stock")
 }
 
 /// A building (GDD sections 25 to 29 and 116). The footprint is a rectangle of

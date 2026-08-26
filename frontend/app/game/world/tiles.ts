@@ -19,15 +19,28 @@
 //      world seed, so the mosaic is identical in two sessions and in two tabs and a
 //      chunk that streams back in does not reshuffle.
 
-import { growthTint } from '../textures/palette';
+import { cropTint, growthTintFor } from '../textures/palette';
 import { variantForCell } from '../textures/prng';
 import { TERRAIN_VARIANTS, terrainTileIndex } from '../textures/terrain-atlas';
 import { UsageTile, usageTileIndex, usageTileIndexForCropState } from '../textures/usage-atlas';
 import { type FieldRenderState, type WorldChunkView } from './source';
-import { CropCycleState, LandUse, cellKey, terrainFromCode } from '~/shared/index';
+import { CROPS, CropCycleState, CropLook, LandUse, cellKey, terrainFromCode } from '~/shared/index';
 
 /** Tint that leaves a tile exactly as it was drawn. */
 export const NO_TINT = 0xffffff;
+
+/**
+ * States that show soil and therefore take no crop tint.
+ *
+ * A plowed field is soil whatever is going to be sown on it, and colouring it by the crop
+ * would promise a plant that is not there yet.
+ */
+const SOIL_STATES: readonly CropCycleState[] = [
+  CropCycleState.VIRGIN,
+  CropCycleState.PLOWED,
+  CropCycleState.CULTIVATED,
+  CropCycleState.SEEDED,
+];
 
 /**
  * Index of "no tile here" in the usage layer.
@@ -96,7 +109,13 @@ export function terrainTileIndices(
  * chance of asking for the tile of a state that is not one.
  */
 type UsageResolution =
-  | { readonly kind: 'CROP'; readonly state: CropCycleState; readonly tint: number }
+  | {
+      readonly kind: 'CROP';
+      readonly state: CropCycleState;
+      /** Silhouette the tile is drawn with, taken from the family of the crop. */
+      readonly look: CropLook;
+      readonly tint: number;
+    }
   | { readonly kind: 'TILE'; readonly tile: UsageTile };
 
 /** The usage tile of one modified cell. */
@@ -114,13 +133,19 @@ function usageOfPatch(
         // field rather than guess a phase, which would show a harvest that never was.
         return { kind: 'TILE', tile: UsageTile.VIRGIN };
       }
+      const crop = state.cropId === null ? null : CROPS[state.cropId];
       return {
         kind: 'CROP',
         state: state.cropCycleState,
-        tint:
-          state.cropCycleState === CropCycleState.GROWING
-            ? growthTint(state.growthProgressBp)
-            : NO_TINT,
+        look: crop?.look ?? CropLook.SPIKE,
+        // Soil takes no tint: a plowed field is soil whatever is going to be sown on it.
+        // Growing ramps towards the colour of its crop, so the field reads as young and as
+        // maize at once; the other plant states carry the colour flat.
+        tint: SOIL_STATES.includes(state.cropCycleState)
+          ? NO_TINT
+          : state.cropCycleState === CropCycleState.GROWING
+            ? growthTintFor(state.cropId, state.growthProgressBp)
+            : cropTint(state.cropId),
       };
     }
     case LandUse.BUILDING:
@@ -170,7 +195,7 @@ export function usageTileIndices(
     }
     const resolved = usageOfPatch(patch.landUse, patch.ownerPlayerId, patch.fieldId, context);
     if (resolved.kind === 'CROP') {
-      indices[idx] = usageTileIndexForCropState(resolved.state);
+      indices[idx] = usageTileIndexForCropState(resolved.state, resolved.look);
       tints[idx] = resolved.tint;
       continue;
     }

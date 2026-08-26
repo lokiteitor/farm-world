@@ -33,6 +33,8 @@ import {
   ValidationCode,
   fromWireMoney,
   type BuildingDto,
+  type FarmDto,
+  type StorageUsage,
 } from '~/shared/index';
 import { useBuildingsStore } from '~/stores/buildings';
 import { useMachinesStore } from '~/stores/machines';
@@ -109,8 +111,8 @@ describe('el inspector de edificio', () => {
   it('muestra el contenido del silo como existencias de la granja', async () => {
     await bootstrap();
     const silo = buildingOf(BuildingType.SILO);
-    const farmWheat = server.world.farm.wheat;
-    const units = STORAGE_RESOURCE_UNITS.WHEAT_LITERS;
+    const farmWheat = grainUsage(server.world.farm);
+    const units = STORAGE_RESOURCE_UNITS.GRAIN_LITERS;
 
     const wrapper = mount(BuildingInspectorPanel, { props: { buildingId: silo.id } });
     const text = wrapper.text();
@@ -161,7 +163,7 @@ describe('el inspector de edificio', () => {
     await bootstrap();
     const silo = buildingOf(BuildingType.SILO);
     expect(silo.occupancy).toBe(0);
-    expect(server.world.farm.wheat.storedUnits).toBeGreaterThan(0);
+    expect(grainUsage(server.world.farm).storedUnits).toBeGreaterThan(0);
 
     const wrapper = mount(BuildingInspectorPanel, { props: { buildingId: silo.id } });
 
@@ -191,3 +193,9 @@ describe('el inspector de edificio', () => {
     wrapper.unmount();
   });
 });
+
+/** La ocupacion de la categoria de grano de una granja simulada. */
+function grainUsage(farm: FarmDto): StorageUsage {
+  const row = farm.storage.find((candidate) => candidate.category === 'GRAIN_LITERS');
+  return row?.usage ?? { storedUnits: 0, reservedUnits: 0, capacityUnits: 0, occupancyBp: 0 };
+}

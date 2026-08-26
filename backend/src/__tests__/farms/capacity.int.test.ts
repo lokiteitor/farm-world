@@ -171,10 +171,12 @@ describe('el servicio de capacidades tras construir', () => {
       used: 0,
       total: BUILDING_CATALOGUE[BuildingType.WORKER_HOME].capacity,
     });
-    expect(capacities.wheat.capacityUnits).toBe(BUILDING_CATALOGUE[BuildingType.SILO].capacity);
+    expect(capacities.storage.GRAIN_LITERS.capacityUnits).toBe(
+      BUILDING_CATALOGUE[BuildingType.SILO].capacity,
+    );
     // No wood store was built, so there is no capacity for wood and no division by zero.
-    expect(capacities.wood.capacityUnits).toBe(0);
-    expect(capacities.wood.occupancyBp).toBe(0);
+    expect(capacities.storage.WOOD_M3.capacityUnits).toBe(0);
+    expect(capacities.storage.WOOD_M3.occupancyBp).toBe(0);
     expect(capacities.hasWorkshop).toBe(true);
     expect(capacities.buildingCount).toBe(4);
   });
@@ -225,7 +227,7 @@ describe('las existencias de la granja', () => {
 
     // Layer one: the reservation of plan section 5.4, taken when a harvest is assigned.
     const reserved = await harness.services.transaction((tx) =>
-      reserveStorage(tx, farmId, 'WHEAT_LITERS', 1_000),
+      reserveStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', 1_000),
     );
     expect(reserved.ok).toBe(true);
     expect(reserved.usage.reservedUnits).toBe(1_000);
@@ -233,14 +235,14 @@ describe('las existencias de la granja', () => {
     // A reservation that does not fit is refused, which is what makes an overflow an
     // actionable rejection instead of a silent loss at completion (GDD sections 83 and 97).
     const tooBig = await harness.services.transaction((tx) =>
-      reserveStorage(tx, farmId, 'WHEAT_LITERS', capacity),
+      reserveStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', capacity),
     );
     expect(tooBig.ok).toBe(false);
     expect(tooBig.usage.reservedUnits).toBe(1_000);
 
     // Layer two: the bounded deposit. It releases the reservation and accepts what fits.
     const deposited = await harness.services.transaction((tx) =>
-      depositStorage(tx, farmId, 'WHEAT_LITERS', 900, { releaseReservedUnits: 1_000 }),
+      depositStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', 900, { releaseReservedUnits: 1_000 }),
     );
     expect(deposited.acceptedUnits).toBe(900);
     expect(deposited.wastedUnits).toBe(0);
@@ -250,7 +252,7 @@ describe('las existencias de la granja', () => {
     // More than the silo holds: what fits is stored and the rest is reported as waste, never
     // as a constraint violation, because this path runs inside a completion job.
     const overflowed = await harness.services.transaction((tx) =>
-      depositStorage(tx, farmId, 'WHEAT_LITERS', capacity),
+      depositStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', capacity),
     );
     expect(overflowed.acceptedUnits).toBe(capacity - 900);
     expect(overflowed.wastedUnits).toBe(900);
@@ -259,13 +261,13 @@ describe('las existencias de la granja', () => {
 
     // And out again, for a sale.
     const sold = await harness.services.transaction((tx) =>
-      withdrawStorage(tx, farmId, 'WHEAT_LITERS', capacity),
+      withdrawStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', capacity),
     );
     expect(sold.ok).toBe(true);
     expect(sold.usage.storedUnits).toBe(0);
 
     const empty = await harness.services.transaction((tx) =>
-      withdrawStorage(tx, farmId, 'WHEAT_LITERS', 1),
+      withdrawStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', 1),
     );
     expect(empty.ok).toBe(false);
     expect(empty.usage.storedUnits).toBe(0);
@@ -276,7 +278,7 @@ describe('las existencias de la granja', () => {
     // builds one (GDD section 136). A reservation is refused and a deposit wastes everything,
     // both without touching a constraint.
     const reserved = await harness.services.transaction((tx) =>
-      reserveStorage(tx, farmId, 'WOOD_M3', 1),
+      reserveStorage(tx, farmId, 'WOOD', 'WOOD_M3', 1),
     );
     expect(reserved.ok).toBe(false);
     expect(reserved.usage.capacityUnits).toBe(0);
@@ -285,7 +287,7 @@ describe('las existencias de la granja', () => {
     );
 
     const deposited = await harness.services.transaction((tx) =>
-      depositStorage(tx, farmId, 'WOOD_M3', 100),
+      depositStorage(tx, farmId, 'WOOD', 'WOOD_M3', 100),
     );
     expect(deposited.acceptedUnits).toBe(0);
     expect(deposited.wastedUnits).toBe(100);
@@ -311,7 +313,9 @@ describe('DELETE /api/buildings/:buildingId', () => {
   });
 
   it('rechaza retirar un silo que todavia guarda grano', async () => {
-    await harness.services.transaction((tx) => depositStorage(tx, farmId, 'WHEAT_LITERS', 5_000));
+    await harness.services.transaction((tx) =>
+      depositStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', 5_000),
+    );
     const response = await harness.app.inject({
       method: 'DELETE',
       url: `/api/buildings/${idOf(BuildingType.SILO)}`,
@@ -323,13 +327,17 @@ describe('DELETE /api/buildings/:buildingId', () => {
     );
     // Nothing moved: the silo is still there and still holds the grain.
     const capacities = await farmCapacities(harness.prisma, playerId, farmId);
-    expect(capacities.wheat.storedUnits).toBe(5_000);
-    expect(capacities.wheat.capacityUnits).toBe(BUILDING_CATALOGUE[BuildingType.SILO].capacity);
+    expect(capacities.storage.GRAIN_LITERS.storedUnits).toBe(5_000);
+    expect(capacities.storage.GRAIN_LITERS.capacityUnits).toBe(
+      BUILDING_CATALOGUE[BuildingType.SILO].capacity,
+    );
   });
 
   it('retira un edificio vacio, devuelve el valor de reventa y libera las celdas', async () => {
     // Empty the silo first, which is the state the refusal above demands.
-    await harness.services.transaction((tx) => withdrawStorage(tx, farmId, 'WHEAT_LITERS', 5_000));
+    await harness.services.transaction((tx) =>
+      withdrawStorage(tx, farmId, 'WHEAT', 'GRAIN_LITERS', 5_000),
+    );
     const siloId = idOf(BuildingType.SILO);
     const before = await harness.prisma.player.findUniqueOrThrow({
       where: { id: playerId },
@@ -348,7 +356,7 @@ describe('DELETE /api/buildings/:buildingId', () => {
         refund: string;
         balanceAfter: string;
         releasedCells: CellCoord[];
-        farm: { wheat: { capacityUnits: number } };
+        farm: { storage: { category: string; usage: { capacityUnits: number } }[] };
       };
     }>().result;
 
@@ -360,7 +368,8 @@ describe('DELETE /api/buildings/:buildingId', () => {
     );
     expect(result.releasedCells.length).toBe(BUILDING_CATALOGUE[BuildingType.SILO].footprintCells);
     // The trigger recomputed the farm capacity the moment the silo was disposed of.
-    expect(result.farm.wheat.capacityUnits).toBe(0);
+    const grain = result.farm.storage.find((row) => row.category === 'GRAIN_LITERS');
+    expect(grain?.usage.capacityUnits).toBe(0);
 
     // The cells are owned land again, with no use and no building, so a field may take them.
     const rows = await harness.prisma.worldCell.findMany({
@@ -385,7 +394,7 @@ describe('DELETE /api/buildings/:buildingId', () => {
 
     // And the service no longer counts it.
     const capacities = await farmCapacities(harness.prisma, playerId, farmId);
-    expect(capacities.wheat.capacityUnits).toBe(0);
+    expect(capacities.storage.GRAIN_LITERS.capacityUnits).toBe(0);
     expect(capacities.buildingCount).toBe(3);
     const live = await loadBuildings(harness.prisma, [farmId]);
     expect(live.some((building) => building.id === siloId)).toBe(false);
@@ -432,7 +441,7 @@ describe('DELETE /api/buildings/:buildingId', () => {
 
     // A leftover reservation is released without ever taking the column below zero.
     const released = await harness.services.transaction((tx) =>
-      releaseStorageReservation(tx, farmId, 'WOOD_M3', 10),
+      releaseStorageReservation(tx, farmId, 'WOOD', 'WOOD_M3', 10),
     );
     expect(released.reservedUnits).toBe(0);
   });

@@ -249,6 +249,7 @@ function worldSource(): WorldSource {
         : {
             cropCycleState: field.cropCycleState,
             growthProgressBp: bp(field.projection.growthProgressBp),
+            cropId: field.cropId,
           };
     },
     pendingCells: () => pending.pendingCellKeys,

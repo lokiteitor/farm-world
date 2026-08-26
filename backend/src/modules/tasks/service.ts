@@ -61,9 +61,11 @@ import {
   LedgerType,
   MachineStatus,
   NoticeKind,
+  CROPS,
   OPERATION_REQUIREMENTS,
   ScheduledEventKind,
   StorageResource,
+  storageTargetOf,
   TaskStatus,
   ValidationCode,
   isApiError,
@@ -72,6 +74,7 @@ import {
   type GameMs,
   type MachineId,
   type PlayerId,
+  type StockItem,
   type StorageResource as StorageResourceType,
 } from '../../shared/index.js';
 import { buildInventoryFarms } from '../economy/readModel.js';
@@ -191,7 +194,11 @@ export async function createTask(
       targetFieldId: evaluation.field?.id ?? null,
       targetForestPlotId: evaluation.plot?.id ?? null,
       destinationFarmId: evaluation.destinationFarm?.id ?? null,
-      cropId: request.cropId ?? null,
+      // The crop the request names when sowing, and the one standing on the field when
+      // harvesting. A harvest names no crop of its own (the field already carries one), but
+      // the row has to remember which pile the deposit belongs in: reading the field again
+      // at completion would answer with whatever was sown after this harvest cleared it.
+      cropId: request.cropId ?? evaluation.field?.cropId ?? null,
       // Audit, and the divisor of the duration: GDD section 89 warns that the unit of
       // `workSpeed` will be recalculated, so a historical row stays reinterpretable only if
       // it keeps the figures the duration was fixed with (plan section 5.2).
@@ -322,12 +329,19 @@ async function reserveResources(
     }
   }
 
-  const resource = evaluation.storageResource;
+  const category = evaluation.storageResource;
+  const item = evaluation.storageItem;
   const units = task.reservedStorageUnits;
-  if (resource !== null && task.destinationFarmId !== null && units !== null && units > 0) {
-    const outcome = await reserveStorage(tx, task.destinationFarmId, resource, units);
+  if (
+    category !== null &&
+    item !== null &&
+    task.destinationFarmId !== null &&
+    units !== null &&
+    units > 0
+  ) {
+    const outcome = await reserveStorage(tx, task.destinationFarmId, item, category, units);
     if (!outcome.ok) {
-      throw storageCapacityError(resource, outcome.usage, units);
+      throw storageCapacityError(category, outcome.usage, units);
     }
   }
 }
@@ -544,7 +558,16 @@ async function applyTargetTransition(
       ctx.outbox,
       ctx.reading,
       field,
-      { operation: task.operation, cropId: task.cropId as CropId | null },
+      {
+        operation: task.operation,
+        // Only where the operation names a crop. The row carries one for a harvest too,
+        // because the deposit has to know which pile it belongs in, but the field machine
+        // refuses a crop on an operation that does not sow: the two uses of `cropId` are
+        // different questions and this is where they part.
+        cropId: OPERATION_REQUIREMENTS[task.operation].requiresCrop
+          ? (task.cropId as CropId | null)
+          : null,
+      },
       atGameMs,
     );
     return { field: outcome.field, producedUnits: outcome.harvestedLiters };
@@ -600,23 +623,30 @@ async function depositProduce(
   task: TaskRecord,
   producedUnits: number | null,
 ): Promise<{ readonly storedUnits: number; readonly wastedUnits: number }> {
-  const resource = storageResourceOf(task);
+  const target = storageTargetOfTask(task);
   const farmId = task.destinationFarmId;
   const reserved = task.reservedStorageUnits ?? 0;
 
-  if (resource === null || farmId === null) {
+  if (target === null || farmId === null) {
     return { storedUnits: 0, wastedUnits: 0 };
   }
   if (producedUnits === null || producedUnits <= 0) {
     if (reserved > 0) {
-      await releaseStorageReservation(ctx.tx, farmId, resource, reserved);
+      await releaseStorageReservation(ctx.tx, farmId, target.item, target.category, reserved);
     }
     return { storedUnits: 0, wastedUnits: 0 };
   }
 
-  const deposit = await depositStorage(ctx.tx, farmId, resource, producedUnits, {
-    releaseReservedUnits: reserved,
-  });
+  const deposit = await depositStorage(
+    ctx.tx,
+    farmId,
+    target.item,
+    target.category,
+    producedUnits,
+    {
+      releaseReservedUnits: reserved,
+    },
+  );
   if (deposit.wastedUnits > 0) {
     // A non monetary entry: no money moves, and the return summary needs to be able to say
     // that grain was lost and how much (plan section 2.2, resolution of GDD sections 83 and
@@ -629,7 +659,8 @@ async function depositProduce(
       refType: TASK_REF_TYPE,
       refId: task.id,
       meta: {
-        resource,
+        item: target.item,
+        category: target.category,
         producedUnits,
         acceptedUnits: deposit.acceptedUnits,
         wastedUnits: deposit.wastedUnits,
@@ -664,13 +695,13 @@ async function emitStorageFrames(
   if (wastedUnits <= 0) {
     return;
   }
-  const resource = storageResourceOf(task);
+  const target = storageTargetOfTask(task);
   ctx.emit({
     type: GameEventType.NOTICE,
     payload: {
       notice: {
         kind:
-          resource === StorageResource.WOOD_M3
+          target?.category === StorageResource.WOOD_M3
             ? NoticeKind.WOOD_OVERFLOW
             : NoticeKind.HARVEST_OVERFLOW,
         severity: 'WARNING',
@@ -689,9 +720,16 @@ async function emitStorageFrames(
  * The store a task feeds, read from the requirement table of GDD section 90 and never
  * restated, so a change of the catalogue moves the reservation, the deposit and the release
  * together.
+ *
+ * A harvest reads its crop off the task row: `cropId` is written when the task is assigned,
+ * with the crop the field carried at that moment. Taking it from the row rather than
+ * re-reading the field is what makes the reservation, the deposit and the release name the
+ * same pile even if the field has since been harvested and sown again.
  */
-function storageResourceOf(task: TaskRecord): StorageResourceType | null {
-  return OPERATION_REQUIREMENTS[task.operation].requiresStorage;
+function storageTargetOfTask(
+  task: TaskRecord,
+): { readonly category: StorageResourceType; readonly item: StockItem } | null {
+  return storageTargetOf(task.operation, task.cropId ?? null, CROPS, OPERATION_REQUIREMENTS);
 }
 
 // ---------------------------------------------------------------------------
@@ -739,11 +777,17 @@ export async function cancelTask(
 
   await releaseTarget(tx, closed);
 
-  const resource = storageResourceOf(closed);
+  const target = storageTargetOfTask(closed);
   const reserved = closed.reservedStorageUnits;
   let released: number | null = null;
-  if (resource !== null && closed.destinationFarmId !== null && reserved !== null && reserved > 0) {
-    await releaseStorageReservation(tx, closed.destinationFarmId, resource, reserved);
+  if (target !== null && closed.destinationFarmId !== null && reserved !== null && reserved > 0) {
+    await releaseStorageReservation(
+      tx,
+      closed.destinationFarmId,
+      target.item,
+      target.category,
+      reserved,
+    );
     released = reserved;
   }
 

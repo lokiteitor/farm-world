@@ -16,7 +16,7 @@
 //     by condition, which is the formula this module implements.
 
 import { BUILDING_CATALOGUE, type BuildingDefinition } from '../config/buildings.js';
-import { type CropDefinition } from '../config/crops.js';
+import { CROPS, type CropDefinition } from '../config/crops/index.js';
 import {
   ACCESSIBILITY_MULTIPLIER_BP,
   BASE_PRICE_BY_TERRAIN,
@@ -25,7 +25,13 @@ import {
 } from '../config/economy.js';
 import { type TreeSpeciesDefinition } from '../config/forestry.js';
 import { MACHINE_CATALOGUE, type MachineDefinition } from '../config/machines.js';
-import { type BuildingType, type MachineType, type TerrainType } from '../domain/enums.js';
+import {
+  type BuildingType,
+  type CropId,
+  type MachineType,
+  type StockItem,
+  type TerrainType,
+} from '../domain/enums.js';
 import { Money } from '../domain/money.js';
 import { DM3_PER_M3, type Bp } from '../domain/units.js';
 
@@ -253,8 +259,14 @@ export interface LiquidatableHolding {
   readonly buildings: readonly BuildingType[];
   /** Owned cells with no field, forest plot or building on them, by terrain. */
   readonly unusedLandCells: readonly TerrainType[];
-  readonly storedWheatLiters: number;
-  readonly storedWoodDm3: number;
+  /**
+   * The piles the farms hold, one per fungible good.
+   *
+   * A list and not two named totals, because the sale price belongs to the crop: with
+   * sixty two crops, two fields called "wheat" and "wood" could only value a holding by
+   * pretending every grain is wheat.
+   */
+  readonly stock: readonly { readonly item: StockItem; readonly units: number }[];
 }
 
 export interface LiquidationValueBreakdown {
@@ -276,7 +288,8 @@ export interface LiquidationValueBreakdown {
 export function liquidationValue(
   holding: LiquidatableHolding,
   options: {
-    readonly crop?: CropDefinition;
+    /** The catalogue to price the crops with. The real one by default. */
+    readonly crops?: Readonly<Record<CropId, CropDefinition>>;
     readonly species?: TreeSpeciesDefinition;
     readonly catalogue?: Readonly<Record<BuildingType, BuildingDefinition>>;
     readonly machineCatalogue?: Readonly<Record<MachineType, MachineDefinition>>;
@@ -287,13 +300,15 @@ export function liquidationValue(
   const resale = options.resale ?? DEFAULT_RESALE_CONFIG;
   const machineCatalogue = options.machineCatalogue ?? MACHINE_CATALOGUE;
 
-  const inventory = Money.add(
-    options.crop === undefined
-      ? Money.ZERO
-      : cropSaleRevenue(options.crop, holding.storedWheatLiters),
-    options.species === undefined
-      ? Money.ZERO
-      : woodSaleRevenue(options.species, holding.storedWoodDm3),
+  const crops = options.crops ?? CROPS;
+  const inventory = Money.sum(
+    holding.stock.map((pile) =>
+      pile.item === 'WOOD'
+        ? options.species === undefined
+          ? Money.ZERO
+          : woodSaleRevenue(options.species, pile.units)
+        : cropSaleRevenue(crops[pile.item], pile.units),
+    ),
   );
 
   const machines = Money.sum(

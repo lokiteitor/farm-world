@@ -43,7 +43,6 @@ import {
   MIN_CONDITION_TO_ASSIGN,
   MachineStatus,
   OPERATION_REQUIREMENTS,
-  StorageResource,
   TaskOperation,
   ValidationCode,
   WorkerStatus,
@@ -51,6 +50,7 @@ import {
   canAssignMachine,
   explainIncompatibility,
   type CropId,
+  type Season,
   type FieldDto,
   type ForestPlotDto,
   type MachineDefinition,
@@ -410,10 +410,18 @@ export function unitsForAssignment(operation: TaskOperation, situation: TargetSi
 // The crop (check 8) and the store (check 9)
 // ---------------------------------------------------------------------------
 
-/** Why the crop of a sowing is refused, in the order of `checkCrop`. */
+/**
+ * Why the crop of a sowing is refused, in the order of `checkCrop`.
+ *
+ * The season is the fourth rule and the last one checked, exactly as the server checks it:
+ * a crop outside its window is refused, and a cycle that runs past the end of that window
+ * once sown is not. Passing `null` for the season skips the check, which is what a caller
+ * that has no clock reading does.
+ */
 export function cropBlockingCode(
   operation: TaskOperation,
   cropId: CropId | null,
+  season: Season | null = null,
 ): ValidationCode | null {
   const requirement = requirementOf(operation);
   if (!requirement.requiresCrop) {
@@ -422,7 +430,13 @@ export function cropBlockingCode(
   if (cropId === null) {
     return ValidationCode.FIELD_CROP_REQUIRED;
   }
-  return cropId in CROPS ? null : ValidationCode.CROP_UNKNOWN;
+  if (!(cropId in CROPS)) {
+    return ValidationCode.CROP_UNKNOWN;
+  }
+  if (season !== null && !CROPS[cropId].sowingSeasons.includes(season)) {
+    return ValidationCode.CROP_OUT_OF_SEASON;
+  }
+  return null;
 }
 
 export interface StorageSituation {
@@ -455,9 +469,9 @@ export function storageBlockingCode(
   if (situation.freeUnits > 0) {
     return null;
   }
-  return requirement.requiresStorage === StorageResource.WHEAT_LITERS
-    ? ValidationCode.SILO_CAPACITY_EXCEEDED
-    : ValidationCode.WOOD_STORAGE_CAPACITY_EXCEEDED;
+  // One code for every category now. Which store is full travels in the details of the
+  // error the server sends, so the panel does not have to keep a table of its own.
+  return ValidationCode.STORAGE_CAPACITY_EXCEEDED;
 }
 
 // ---------------------------------------------------------------------------
@@ -466,6 +480,8 @@ export function storageBlockingCode(
 
 export interface AssignmentSituation {
   readonly operation: TaskOperation;
+  /** Season of the world, when the caller has a clock reading. */
+  readonly season?: Season | null;
   readonly worker: WorkerDto | null;
   readonly combination: MachineCombination | null;
   /** Every machine of the holding, for the "there is nothing to choose" answer. */
@@ -516,7 +532,11 @@ export function assignmentBlockingCode(situation: AssignmentSituation): Validati
   if (targetCode !== null) {
     return targetCode;
   }
-  const cropCode = cropBlockingCode(situation.operation, situation.cropId);
+  const cropCode = cropBlockingCode(
+    situation.operation,
+    situation.cropId,
+    situation.season ?? null,
+  );
   if (cropCode !== null) {
     return cropCode;
   }

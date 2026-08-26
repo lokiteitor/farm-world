@@ -8,7 +8,7 @@ import { describe, expect, it } from 'vitest';
 import { PALETTE } from '../../textures/palette';
 import { chunkThumbnailPixels, thumbnailColourOf } from '../thumbnail';
 import { STRANGER, TERRAIN, VIEWER, idxOf, makeChunk, patch } from './fixtures';
-import { CHUNK_SIZE, CropCycleState, LandUse, bp, cellKey } from '~/shared/index';
+import { CHUNK_SIZE, CropCycleState, CropId, LandUse, bp, cellKey } from '~/shared/index';
 
 const CONTEXT = {
   viewerPlayerId: VIEWER,
@@ -66,6 +66,7 @@ describe('chunkThumbnailPixels', () => {
       fieldState: () => ({
         cropCycleState: CropCycleState.READY_TO_HARVEST,
         growthProgressBp: bp(10_000),
+        cropId: CropId.WHEAT,
       }),
     });
     expect(colourAt(pixels, idxOf(2, 2))).toBe(PALETTE.crop.READY_TO_HARVEST.soil);

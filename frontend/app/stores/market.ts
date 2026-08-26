@@ -14,7 +14,6 @@ import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import {
   CROPS,
-  CropId,
   Money,
   TREE_SPECIES_CATALOGUE,
   TreeSpecies,
@@ -23,6 +22,7 @@ import {
   multiplyByCount,
   woodSaleRevenue,
   type MarketPrice,
+  type StockItem,
   type StorageResource,
 } from '~/shared/index';
 
@@ -30,16 +30,21 @@ export const useMarketStore = defineStore('market', () => {
   const prices = ref<readonly MarketPrice[]>([]);
   const atGameMs = ref<string | null>(null);
 
-  const byResource = computed<Readonly<Record<string, MarketPrice>>>(() => {
+  const byItem = computed<Readonly<Record<string, MarketPrice>>>(() => {
     const index: Record<string, MarketPrice> = {};
     for (const price of prices.value) {
-      index[price.resource] = price;
+      index[price.item] = price;
     }
     return index;
   });
 
-  function priceOf(resource: StorageResource): MarketPrice | undefined {
-    return byResource.value[resource];
+  function priceOf(item: StockItem): MarketPrice | undefined {
+    return byItem.value[item];
+  }
+
+  /** Every price of one storage category, so the panel can group its rows. */
+  function pricesOfCategory(category: StorageResource): readonly MarketPrice[] {
+    return prices.value.filter((price) => price.category === category);
   }
 
   /**
@@ -47,8 +52,8 @@ export const useMarketStore = defineStore('market', () => {
    * `multiplyByCount` is integer arithmetic over the scaled amount, which is why the
    * quotation is per stored unit and not per display unit.
    */
-  function valueOf(resource: StorageResource, quantityUnits: number): Money {
-    const price = priceOf(resource);
+  function valueOf(item: StockItem, quantityUnits: number): Money {
+    const price = priceOf(item);
     if (price === undefined || quantityUnits <= 0) {
       return Money.ZERO;
     }
@@ -62,13 +67,15 @@ export const useMarketStore = defineStore('market', () => {
    * the one `tools/balance` and the server use, so a panel that previews a sale with it
    * cannot drift from the amount the ledger will record (GDD sections 123 and 133).
    */
-  function revenueOf(resource: StorageResource, quantityUnits: number): Money {
+  function revenueOf(item: StockItem, quantityUnits: number): Money {
     if (quantityUnits <= 0) {
       return Money.ZERO;
     }
-    return resource === 'WHEAT_LITERS'
-      ? cropSaleRevenue(CROPS[CropId.WHEAT], quantityUnits)
-      : woodSaleRevenue(TREE_SPECIES_CATALOGUE[TreeSpecies.PINE], quantityUnits);
+    // The price belongs to the crop, so the pile decides the figure. Wood is the one pile
+    // the crop catalogue does not hold.
+    return item === 'WOOD'
+      ? woodSaleRevenue(TREE_SPECIES_CATALOGUE[TreeSpecies.PINE], quantityUnits)
+      : cropSaleRevenue(CROPS[item], quantityUnits);
   }
 
   function applyPrices(next: {
@@ -84,5 +91,15 @@ export const useMarketStore = defineStore('market', () => {
     atGameMs.value = null;
   }
 
-  return { prices, atGameMs, byResource, priceOf, valueOf, revenueOf, applyPrices, reset };
+  return {
+    prices,
+    atGameMs,
+    byItem,
+    priceOf,
+    pricesOfCategory,
+    valueOf,
+    revenueOf,
+    applyPrices,
+    reset,
+  };
 });

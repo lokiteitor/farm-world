@@ -60,7 +60,7 @@ describe('el panel de avisos', () => {
       notice({
         kind: 'HARVEST_OVERFLOW',
         severity: 'WARNING',
-        code: ValidationCode.SILO_CAPACITY_EXCEEDED,
+        code: ValidationCode.STORAGE_CAPACITY_EXCEEDED,
         message: 'texto del servidor que el cliente no debe mostrar',
       }),
       Date.now(),
@@ -68,7 +68,7 @@ describe('el panel de avisos', () => {
     const wrapper = mount(NoticesPanel);
     await settle();
 
-    expect(wrapper.text()).toContain(apiErrorMessage(ValidationCode.SILO_CAPACITY_EXCEEDED));
+    expect(wrapper.text()).toContain(apiErrorMessage(ValidationCode.STORAGE_CAPACITY_EXCEEDED));
     expect(wrapper.text()).not.toContain('texto del servidor');
     expect(wrapper.text()).toContain('Silo desbordado');
     wrapper.unmount();

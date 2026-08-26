@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WHEAT } from '../../config/crops.js';
+import { WHEAT } from '../../config/crops/index.js';
 import { CropCycleState } from '../../domain/enums.js';
 import { BP_ONE, BP_ZERO, bp, gameMs } from '../../domain/units.js';
 import {
@@ -123,7 +123,7 @@ describe('projectWeedLevel (GDD section 78)', () => {
       updatedAtGameMs: at(0),
       toGameMs: at(100),
       cropCycleState: CropCycleState.GROWING,
-      crop: WHEAT,
+      land: WHEAT,
     });
     expect(level).toBe(6_000);
   });
@@ -135,7 +135,7 @@ describe('projectWeedLevel (GDD section 78)', () => {
         updatedAtGameMs: at(0),
         toGameMs: at(500),
         cropCycleState: CropCycleState.GROWING,
-        crop: WHEAT,
+        land: WHEAT,
       }),
     ).toBe(BP_ONE);
   });
@@ -156,7 +156,7 @@ describe('projectWeedLevel (GDD section 78)', () => {
           updatedAtGameMs: at(0),
           toGameMs: at(1_000),
           cropCycleState: state,
-          crop: WHEAT,
+          land: WHEAT,
         }),
       ).toBe(1_000);
     }
@@ -171,7 +171,7 @@ describe('projectWeedLevel (GDD section 78)', () => {
         updatedAtGameMs: at(0),
         toGameMs: at(70.028),
         cropCycleState: CropCycleState.VIRGIN,
-        crop: WHEAT,
+        land: WHEAT,
       }),
     ).toBe(1_000);
   });
@@ -183,7 +183,7 @@ describe('projectWeedLevel (GDD section 78)', () => {
       updatedAtGameMs: gameMs(0n),
       toGameMs: gameMs(60_000n),
       cropCycleState: CropCycleState.GROWING,
-      crop: WHEAT,
+      land: WHEAT,
     });
     expect(oneMinute).toBe(1);
     const halfMinute = projectWeedLevel({
@@ -191,7 +191,7 @@ describe('projectWeedLevel (GDD section 78)', () => {
       updatedAtGameMs: gameMs(0n),
       toGameMs: gameMs(30_000n),
       cropCycleState: CropCycleState.GROWING,
-      crop: WHEAT,
+      land: WHEAT,
     });
     expect(halfMinute).toBe(0);
   });
@@ -203,7 +203,7 @@ describe('projectWeedLevel (GDD section 78)', () => {
         updatedAtGameMs: at(100),
         toGameMs: at(10),
         cropCycleState: CropCycleState.GROWING,
-        crop: WHEAT,
+        land: WHEAT,
       }),
     ).toBe(500);
   });
@@ -219,6 +219,7 @@ describe('projectWeedLevelAcrossPhases (GDD section 78 sobre la linea de GDD 76)
       toGameMs: at(toHours),
       cropCycleState: CropCycleState.SEEDED,
       seededAtGameMs: at(0),
+      land: WHEAT,
       crop: WHEAT,
     });
 
@@ -243,6 +244,7 @@ describe('projectWeedLevelAcrossPhases (GDD section 78 sobre la linea de GDD 76)
       toGameMs: at(40),
       cropCycleState: CropCycleState.SEEDED,
       seededAtGameMs: at(0),
+      land: WHEAT,
       crop: WHEAT,
     });
     const rest = projectWeedLevelAcrossPhases({
@@ -251,6 +253,7 @@ describe('projectWeedLevelAcrossPhases (GDD section 78 sobre la linea de GDD 76)
       toGameMs: at(120),
       cropCycleState: CropCycleState.GROWING,
       seededAtGameMs: at(0),
+      land: WHEAT,
       crop: WHEAT,
     });
     expect(rest).toBe(sown(120));
@@ -264,6 +267,7 @@ describe('projectWeedLevelAcrossPhases (GDD section 78 sobre la linea de GDD 76)
         toGameMs: at(100),
         cropCycleState: CropCycleState.GROWING,
         seededAtGameMs: null,
+        land: WHEAT,
         crop: WHEAT,
       }),
     ).toBe(6_000);
@@ -292,7 +296,7 @@ describe('fertility (GDD section 77)', () => {
         updatedAtGameMs: at(0),
         toGameMs: at(300),
         cropCycleState: CropCycleState.VIRGIN,
-        crop: WHEAT,
+        land: WHEAT,
       }),
     ).toBe(BP_ONE);
     expect(
@@ -301,7 +305,7 @@ describe('fertility (GDD section 77)', () => {
         updatedAtGameMs: at(0),
         toGameMs: at(300),
         cropCycleState: CropCycleState.GROWING,
-        crop: WHEAT,
+        land: WHEAT,
       }),
     ).toBe(8_500);
   });
@@ -313,7 +317,7 @@ describe('fertility (GDD section 77)', () => {
         updatedAtGameMs: gameMs(0n),
         toGameMs: gameMs(10_000n * HOUR),
         cropCycleState: CropCycleState.VIRGIN,
-        crop: WHEAT,
+        land: WHEAT,
       }),
     ).toBe(BP_ONE);
   });

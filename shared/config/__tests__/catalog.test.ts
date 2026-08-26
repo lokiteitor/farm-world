@@ -2,10 +2,14 @@ import { describe, expect, it } from 'vitest';
 import {
   BUILDING_TYPES,
   CROP_CYCLE_STATES,
+  CROP_FAMILIES,
   CROP_IDS,
   MACHINE_TYPES,
   MachineRole,
   Money,
+  SEASONS,
+  STORAGE_RESOURCES,
+  StorageResource,
   TERRAIN_TYPES,
   TREE_GROWTH_STAGES,
   TREE_SPECIES_IDS,
@@ -17,7 +21,7 @@ import {
   type TaskOperation,
 } from '../../domain/index.js';
 import { BUILDING_CATALOGUE, MINIMUM_FARM_FOOTPRINT_CELLS } from '../buildings.js';
-import { CROPS } from '../crops.js';
+import { CROPS, CROP_FAMILY_BASELINE } from '../crops/index.js';
 import { BALANCE_CURVES } from '../curves.js';
 import { BASE_PRICE_BY_TERRAIN, STARTING_CAPITAL } from '../economy.js';
 import {
@@ -31,6 +35,7 @@ import {
   OPERATION_REQUIREMENTS,
   REPAIR_COST_BP_PER_CONDITION_POINT,
 } from '../machines.js';
+import { GAME_HOURS_PER_SEASON } from '../time.js';
 import { CROP_CYCLE_TRANSITIONS, WEED_GROWTH_STATES } from '../transitions.js';
 import { POOL_SKILL_MAX_BP, POOL_SKILL_MIN_BP, SKILL_CAP_BP } from '../workers.js';
 
@@ -223,6 +228,63 @@ describe('crops (GDD sections 82 and 119)', () => {
     expect(Money.toString(CROPS.WHEAT.sellPricePerLiter)).toBe('0.9000');
     expect(CROPS.WHEAT.weedGrowthBpPerGameHour as number).toBe(60);
     expect(CROPS.WHEAT.fertilityDrainPerCycleBp as number).toBe(1500);
+  });
+
+  it('gives every crop a family, a look and a storage category from its baseline', () => {
+    for (const crop of Object.values(CROPS)) {
+      const baseline = CROP_FAMILY_BASELINE[crop.family];
+      expect(baseline, crop.id).toBeDefined();
+      expect(crop.look, crop.id).toBe(baseline.look);
+      expect(crop.storageResource, crop.id).toBe(baseline.storageResource);
+      // Timber is not a crop, so no crop may claim its store.
+      expect(crop.storageResource, crop.id).not.toBe(StorageResource.WOOD_M3);
+    }
+  });
+
+  it('uses every family, so no baseline is dead weight', () => {
+    const used = new Set(Object.values(CROPS).map((crop) => crop.family));
+    expect([...used].sort()).toEqual([...CROP_FAMILIES].sort());
+  });
+
+  it('names every crop in Spanish, without diacritics and without repeating', () => {
+    const names = Object.values(CROPS).map((crop) => crop.nameEs);
+    for (const name of names) {
+      expect(name, name).toMatch(/^[A-Za-z][A-Za-z ]*$/);
+    }
+    expect(new Set(names).size).toBe(names.length);
+  });
+
+  it('gives every crop a non empty sowing window and leaves no season without one', () => {
+    const covered = new Set<string>();
+    for (const crop of Object.values(CROPS)) {
+      expect(crop.sowingSeasons.length, crop.id).toBeGreaterThan(0);
+      for (const season of crop.sowingSeasons) {
+        expect(SEASONS, crop.id).toContain(season);
+        covered.add(season);
+      }
+      // A cycle longer than the year would make the window meaningless.
+      expect(crop.growthDurationGameHours as number, crop.id).toBeLessThan(
+        GAME_HOURS_PER_SEASON * SEASONS.length,
+      );
+    }
+    expect([...covered].sort()).toEqual([...SEASONS].sort());
+  });
+
+  it('reaches every storage category through a crop and through a building', () => {
+    const stored = new Set(Object.values(CROPS).map((crop) => crop.storageResource));
+    const granted = new Set(
+      Object.values(BUILDING_CATALOGUE)
+        .map((building) => building.capacityResource)
+        .filter((resource): resource is StorageResource => resource !== null),
+    );
+    for (const resource of STORAGE_RESOURCES) {
+      if (resource === StorageResource.WOOD_M3) {
+        continue;
+      }
+      // No unreachable category, and no store nothing can be put in.
+      expect(stored, resource).toContain(resource);
+      expect(granted, resource).toContain(resource);
+    }
   });
 
   it('restores by fallow at most what a cycle drains', () => {

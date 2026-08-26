@@ -26,6 +26,7 @@ import {
   type ChunkCellPatch,
   type ChunkResult,
   type CropCycleState,
+  type CropId,
 } from '~/shared/index';
 
 /** One chunk as the renderer reads it. Structurally satisfied by the world store. */
@@ -53,6 +54,14 @@ export interface FieldRenderState {
   readonly cropCycleState: CropCycleState;
   /** Progress inside the growing phase, in basis points (ADR-0013). */
   readonly growthProgressBp: Bp;
+  /**
+   * The crop standing on the field, or null when it carries none.
+   *
+   * This is the seam that lets the canvas tell sixty two crops apart: the silhouette comes
+   * from the crop's family and the tint from the crop itself. It travels here, through the
+   * world source, and never through a store, because the scenes may not import Pinia.
+   */
+  readonly cropId: CropId | null;
 }
 
 /** One chunk of a batch request, with the version the client already holds. */

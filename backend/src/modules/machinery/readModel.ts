@@ -113,7 +113,13 @@ function toOperationRequirementDto(operation: TaskOperation): OperationRequireme
     requiredImplement: requirement.requiredImplement,
     requiredPossession: [...requirement.requiredPossession],
     requiresCrop: requirement.requiresCrop,
-    requiresStorage: requirement.requiresStorage,
+    // `FROM_CROP` is a sentinel of the requirement table, not a storage category: the
+    // catalogue route reports null, because the category the operation ends up using is
+    // decided by the crop on the field and is not a property of the operation.
+    requiresStorage:
+      requirement.requiresStorage === 'FROM_CROP' ? null : requirement.requiresStorage,
+    /** Whether the store this operation needs depends on the crop being worked. */
+    storageFromCrop: requirement.requiresStorage === 'FROM_CROP',
   };
 }
 

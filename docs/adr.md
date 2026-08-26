@@ -80,6 +80,10 @@ Reglas de escritura:
 | ADR-0057 | Balance del MVP: el catalogo del GDD se implementa sin ajustar y el deficit del primer ciclo es el resultado publicado | [Ver](#adr-0057--balance-del-mvp-el-catalogo-del-gdd-se-implementa-sin-ajustar-y-el-deficit-del-primer-ciclo-es-el-resultado-publicado) |
 | ADR-0058 | Las costuras entre modulos hermanos como registro en `lib/`, y un unico punto de relleno que los dos procesos invocan | [Ver](#adr-0058--las-costuras-entre-modulos-hermanos-como-registro-en-lib-y-un-unico-punto-de-relleno-que-los-dos-procesos-invocan) |
 | ADR-0059 | El criterio de cierre frente al GDD: se corrige el codigo, no la constante, y toda correccion llega con la prueba que falla antes | [Ver](#adr-0059--el-criterio-de-cierre-frente-al-gdd-se-corrige-el-codigo-no-la-constante-y-toda-correccion-llega-con-la-prueba-que-falla-antes) |
+| ADR-0060 | Un catalogo de sesenta y dos cultivos como linea base por familia mas desviaciones | [Ver](#adr-0060--un-catalogo-de-sesenta-y-dos-cultivos-como-linea-base-por-familia-mas-desviaciones) |
+| ADR-0061 | Las existencias recuerdan su cultivo; la categoria de almacen es solo el cubo de capacidad | [Ver](#adr-0061--las-existencias-recuerdan-su-cultivo-la-categoria-de-almacen-es-solo-el-cubo-de-capacidad) |
+| ADR-0062 | Cuatro estaciones derivadas del reloj, con ventana de siembra por cultivo y sin clima | [Ver](#adr-0062--cuatro-estaciones-derivadas-del-reloj-con-ventana-de-siembra-por-cultivo-y-sin-clima) |
+| ADR-0063 | Render por silueta de familia y tinte por cultivo: cuarenta casillas de atlas, no quinientas | [Ver](#adr-0063--render-por-silueta-de-familia-y-tinte-por-cultivo-cuarenta-casillas-de-atlas-no-quinientas) |
 <!-- adr-index:end -->
 
 ## Plantilla de entrada
@@ -6245,3 +6249,328 @@ Ajustar las constantes que las revisiones cuestionaron —la tasa de malezas, el
 implementos, las tasas de desgaste— para que las cifras del GDD se reprodujeran: es la salida que
 convierte una desviacion documentada en un balance retocado sin rastro, y esta descartada desde la
 planificacion.
+
+---
+
+## ADR-0060 — Un catalogo de sesenta y dos cultivos como linea base por familia mas desviaciones
+
+Fase: W8 · Fecha: 2026-08-26
+
+### Estado
+
+Aceptada.
+
+### Contexto
+
+El MVP se cerro con un solo cultivo, `WHEAT`, y ADR-0011 dejo anotado el momento exacto en que habria
+que volver sobre la decision: «queda por vigilar el momento en que aparezca un segundo cultivo». La
+peticion que abrio esta fase pedia unos ciento cuarenta, de los que sesenta y dos son anuales de una
+cosecha destructiva y encajan en el ciclo de campo tal como esta; el resto exige mecanicas que no
+existen y queda fuera de alcance.
+
+Sesenta y dos cultivos por once constantes son casi setecientos numeros. ADR-0014 obliga a justificar
+cada valor inventado donde se escribe, y setecientos comentarios no son revisables: un revisor que no
+puede leerlos no encontrara el que esta mal. El riesgo no es escribir el catalogo, es que nadie pueda
+comprobarlo despues.
+
+### Decision
+
+El catalogo se declara como una linea base por familia mas una desviacion por cultivo.
+
+`shared/config/crops/families.ts` publica diez lineas base, una por familia, cada una justificada una
+sola vez: silueta, categoria de almacen, ventana de siembra, si exige labrar, tasa de malezas, desgaste
+de fertilidad y estado tras la cosecha. `defineCrop` deriva de ahi todo lo redundante y cada entrada
+declara solo lo que la distingue: su ciclo, su rendimiento y su precio.
+
+Dos magnitudes dejan de escribirse a mano y pasan a derivarse, lo que convierte dos invariantes en
+verdades por construccion en vez de comprobaciones que hay que ajustar sesenta y dos veces:
+
+1. Las tres fases temporizadas se reparten desde el ciclo con las proporciones del trigo (625, 1 250 y
+   8 125 puntos base), y la ultima absorbe el redondeo, de modo que la suma es siempre el total
+   publicado.
+2. La regeneracion de fertilidad en barbecho es `max(1, floor(desgaste / 300))`. El divisor es 300 y no
+   los 325 del ciclo de §118 a proposito: reproduce exactamente los 5 bp/h del trigo y satisface por
+   algebra la cota de que un barbecho no restituya mas de lo que un ciclo drena.
+
+El trigo conserva identificador y las cinco cifras que la revision de balance de 2026-08 dejo fijadas.
+Es el ancla: el informe de `docs/balance/` y las pruebas doradas estan construidos sobre el, y el
+refactor del catalogo no mueve ni un digito suyo.
+
+La coherencia economica del conjunto deja de ser revision manual y pasa a ser prueba ejecutable
+(`shared/rules/__tests__/crop-balance.test.ts`): ningun cultivo pierde dinero en el escenario de
+referencia, la razon entre el mejor y el peor margen por hora esta acotada, cada estacion tiene
+cultivos que merezcan la pena, y las familias que exigen construir un almacen que el jugador no tiene
+al empezar pagan mas por hora que las que van al silo que ya posee.
+
+Y se responde al punto que ADR-0011 dejo abierto: el catalogo sigue siendo constantes de TypeScript y
+no una tabla, porque el jugador no desbloquea cultivos. Sigue siendo configuracion global y no estado
+por jugador. Si algun dia los desbloqueara, lo que se anade es una tabla de desbloqueos por jugador, no
+una tabla de catalogo.
+
+### Consecuencias
+
+Un revisor comprueba diez lineas base y sesenta y una desviaciones de una linea, no setecientos numeros
+sueltos. Anadir un cultivo es una linea y una entrada del enum; cambiar como se comporta una familia
+entera es una linea, en un sitio.
+
+El coste es que la linea base es ahora un punto de acoplamiento real: tocar el desgaste de fertilidad de
+`CEREAL` mueve diez cultivos a la vez. Es deliberado, y es lo que hace que la familia signifique algo.
+
+Los precios de los sesenta y un cultivos nuevos se fijaron calibrandolos contra el propio motor de
+balance para alcanzar un margen por hora objetivo de su familia, no eligiendolos a ojo. La calibracion
+es reproducible desde el informe de `make balance`, cuya seccion 9 publica la tabla completa, la
+dispersion y los cultivos fuera de banda.
+
+`shared/config/crops.ts` deja de existir como fichero y pasa a ser el directorio
+`shared/config/crops/`. Los veintidos importadores apuntan ahora a `crops/index.js`.
+
+### Alternativas descartadas
+
+**Escribir las once constantes de cada cultivo.** Es lo que ADR-0014 pide literalmente y lo que se hizo
+con el trigo. Con un cultivo era correcto; con sesenta y dos produce un fichero que nadie revisa, y un
+catalogo que no se revisa es un catalogo con un error dentro que nadie ha visto todavia.
+
+**Mover el catalogo a la base de datos.** ADR-0011 ya lo descarto y las razones no han cambiado: seguiria
+sin haber panel de administracion, y una tabla poblada por semilla convierte un cambio de balance en una
+migracion. El numero de filas nunca fue el argumento.
+
+**Generar el catalogo con un script en tiempo de compilacion.** Quitaria la escritura a mano, pero el
+artefacto que gobierna el juego dejaria de ser legible en el repositorio, que es justamente lo que hace
+util que los catalogos sean constantes versionadas con el codigo.
+
+---
+
+## ADR-0061 — Las existencias recuerdan su cultivo; la categoria de almacen es solo el cubo de capacidad
+
+Fase: W8 · Fecha: 2026-08-26
+
+### Estado
+
+Aceptada. Enmienda ADR-0036.
+
+### Contexto
+
+Con un cultivo, `WHEAT_LITERS` era a la vez el recurso, el cultivo y el edificio que lo guarda, y las
+tres cosas coincidian sin que hiciera falta distinguirlas. El almacen vivia en seis columnas de `farms`
+y un CHECK intra-fila las comparaba: `stored + reserved <= capacity`.
+
+Con sesenta y dos cultivos las tres cosas se separan y hay que elegir por cual se indexa el precio. Si
+el precio fuera de la categoria, los veintidos cultivos de grano valdrian lo mismo por litro y el
+jugador sembraria siempre el de mas litros por hora: sesenta y dos cultivos colapsarian en cuatro
+decisiones. El objetivo eran sesenta y dos perfiles de riesgo y retorno, y el perfil lo lleva el precio.
+
+### Decision
+
+El precio es del cultivo. La categoria es el cubo de capacidad, y nada mas.
+
+En consecuencia las existencias dejan de ser un contador por recurso y pasan a ser una pila por bien
+fungible, que recuerda de que cultivo vino. Dos tablas, no una:
+
+- `farm_stock (farmId, item)`, una fila por pila, que es lo que se vende y lo que se valora.
+- `farm_storage (farmId, category)`, una fila por categoria con la capacidad y el CHECK, mantenida por
+  un disparador que la recalcula desde las pilas.
+
+El agregado no es redundancia opcional. Es el punto de serializacion: dos cosechas de dos cultivos
+distintos tocan dos filas de `farm_stock` distintas y no competirian por nada, cuando lo que compiten es
+por la misma camara fria. Toda escritura toma `FOR UPDATE` sobre la fila de la categoria antes de
+decidir, que es lo que la fila unica de granja hacia antes de forma implicita.
+
+La decision se toma en TypeScript contra la fila bloqueada y no como un UPDATE condicional, que es lo
+que permite a `depositStorage` acotar lo que acepta en vez de fallar: corre dentro de un job de cola y
+una violacion de CHECK ahi se reintentaria para siempre. El CHECK sigue siendo lo que siempre fue, la
+red y nunca el mecanismo (ADR-0018).
+
+La relacion entre categoria y edificio se mantiene uno a uno. Un almacen que concediera sitio a dos
+categorias tendria que sumar litros de bienes distintos contra un mismo contador, o repartir su
+capacidad dos veces. Por eso las cinco categorias traen cinco edificios: silo, henil, camara fria,
+almacen y almacen de madera. Es tambien lo que hace que elegir cultivo sea una decision de inversion y
+no solo una tabla de precios: no se puede cosechar hortaliza sin construir antes la camara.
+
+Todo lo agricola se cuenta en litros, como ya hacia el trigo. No se introduce el kilogramo: bifurcaria
+la formula de rendimiento y el tipo de precio a cambio de cero juego.
+
+Una cosecha no nombra cultivo en su peticion —lo lleva el campo—, asi que `OPERATION_REQUIREMENTS`
+responde `FROM_CROP` y un unico resolutor, `storageTargetOf`, traduce ese centinela. La fila de la
+tarea guarda ademas el cultivo que el campo tenia al asignarla, para que la reserva, el deposito y la
+devolucion nombren la misma pila aunque el campo se haya vuelto a sembrar entretanto.
+
+### Consecuencias
+
+Un jugador con trigo y cebada tiene dos lineas vendibles bajo un unico medidor de grano, cada una a su
+precio. El inventario es proporcional a lo que la granja tiene y no al tamanio del catalogo: una pila
+vacia no tiene fila.
+
+`STORAGE_COLUMNS` desaparece, y con ella la interpolacion de nombres de columna en SQL crudo: la clave
+viaja ahora como parametro.
+
+El contrato cambia en cinco sitios a la vez —`farmDtoSchema`, `marketPriceSchema`, `sellBodySchema`,
+`inventoryLineSchema` y los dos codigos de capacidad excedida, fundidos en `STORAGE_CAPACITY_EXCEEDED`—,
+asi que backend y frontend tienen que moverse en el mismo cambio.
+
+Toda granja nace con sus cinco filas de agregado, por disparador. No pueden crearse perezosamente por el
+escritor que las necesita: dos cosechas concurrentes intentarian insertarla a la vez.
+
+### Alternativas descartadas
+
+**Un recurso de almacen por cultivo.** Sesenta y dos valores de enum en PostgreSQL y sesenta y dos
+capacidades de silo por granja, para modelar que el trigo y la cebada no caben en el mismo sitio, que es
+falso.
+
+**Un unico stock generico en litros equivalentes.** Simple, pero borra la unica razon por la que un
+edificio de almacen es una decision: si todo cabe en el mismo sitio, construir la camara fria no
+significa nada.
+
+**Guardar solo el desglose y calcular la capacidad al vuelo.** Pierde el punto de serializacion, y con el
+la propiedad de que dos cosechas simultaneas no puedan ver ambas un hueco que solo una tiene.
+
+---
+
+## ADR-0062 — Cuatro estaciones derivadas del reloj, con ventana de siembra por cultivo y sin clima
+
+Fase: W8 · Fecha: 2026-08-26
+
+### Estado
+
+Aceptada. Desviacion consciente de §86, registrada en `docs/erratas-gdd-stack.md`.
+
+### Contexto
+
+§82 lista `season` dentro de los datos del cultivo y lo marca como futuro; §86 pone las estaciones fuera
+del MVP estricto, junto con el clima y el riego. El MVP se cerro asi y `shared/config/time.ts` lo dejo
+escrito: «no hay estacion».
+
+Con sesenta y dos cultivos esa exclusion deja de ser barata. Sin estaciones, elegir cultivo es leer una
+tabla de margen por hora y sembrar siempre el mejor: el catalogo entero se reduce a su primera fila. La
+ventana de siembra es lo que convierte sesenta y dos filas en una decision que cambia cada trimestre.
+
+### Decision
+
+Se anaden las cuatro estaciones, y solo eso.
+
+La estacion es una derivacion pura del reloj del mundo: `seasonAtGameMs(gameMs)`, sin ninguna columna en
+ninguna tabla. Es el mismo trato que recibe la etapa de crecimiento de un arbol, que tampoco se almacena
+y siempre es funcion del instante de plantacion, y por la misma razon: lo que no se guarda no puede
+desincronizarse.
+
+Es del mundo y no del jugador. Se calcula sobre el `gameMs` absoluto y no sobre el `startedAtGameMs` del
+jugador, porque derivarla del jugador pondria a dos habitantes del mismo mundo en estaciones distintas
+en el mismo instante.
+
+Una estacion son treinta dias de juego, 720 horas: caben dos ciclos completos de los 325 h de §118, de
+modo que la ventana es una decision de planificacion y no un cierre. El anio son 2 880 horas, que al
+multiplicador por defecto son cinco dias reales, con lo que el ciclo estacional se observa en una semana
+de juego en vez de ser algo de lo que se habla y no se ve. Se ancla en `INITIAL_ANCHOR_GAME_MS` y no en
+cero, porque el mundo tampoco empieza en cero: anclarlo en otro sitio arrancaria cada mundo a mitad de
+estacion.
+
+**Solo se comprueba la estacion en el instante de sembrar.** Un ciclo que se pasa del final de su
+ventana no se penaliza. El interes esta en la planificacion —un ciclo largo sembrado tarde bloquea el
+campo durante la ventana siguiente—, no en un castigo aplicado mientras el jugador esta desconectado.
+Es el mismo argumento por el que la liquidacion forzosa la dispara el barrido y no el login.
+
+No hay clima dinamico, ni regiones, ni temperatura, ni lluvia, ni riego. El motivo que §86 da para la
+exclusion es el alcance, y una derivacion pura sin estado ni modificador de rendimiento no lo amplia.
+
+El rechazo lleva la estacion vigente, las que el cultivo admite y el instante en que se abre la
+siguiente, de modo que el panel puede responder «el maiz se siembra en primavera, dentro de tres dias»
+en vez de solo decir que no. Lo comprueba el servidor en los dos sitios de siempre —la prevalidacion de
+la asignacion y la aplicacion autoritativa—, porque un codigo que solo comprobara el panel seria el
+panel decidiendo (ADR-0032).
+
+La estacion no viaja por la API. El cliente ya lleva `gameMs` y el ancla con la que extrapola, y deriva
+la estacion con la misma funcion pura de `shared/`. Cero contrato nuevo.
+
+### Consecuencias
+
+`shared/config/time.ts` deja de afirmar que no hay estaciones. Una afirmacion en el codigo que deja de
+ser cierta es exactamente la deriva que `docs/erratas-gdd-stack.md` existe para cazar, y por eso el
+cambio va acompanado de su fila alli.
+
+La cobertura estacional pasa a ser una propiedad comprobable del catalogo: la union de las ventanas
+cubre las cuatro estaciones y ninguna se queda sin cultivos que merezcan la pena. El informe de
+`make balance` publica la tabla en su seccion 9.4.
+
+Un cultivo mal colocado en el calendario ya no es un detalle de sabor: si una estacion se queda sin
+nada viable, es un trimestre muerto, y la suite lo dice.
+
+### Alternativas descartadas
+
+**Estaciones mas regiones climaticas.** Daria sentido al cafe y al manzano a la vez, pero toca el
+generador de mundo y la compra de tierra, y ninguno de los dos cultivos entra en esta fase.
+
+**Penalizar el rendimiento de un ciclo que cruza el fin de su estacion.** Exige un multiplicador nuevo en
+`finalYieldLiters` y una tabla estacion por cultivo, y no aporta ninguna decision que la ocupacion del
+campo no aporte ya. Queda registrada como descartada, no como olvidada.
+
+**No anadir estaciones.** Es lo que §86 dice, y es lo que deja el catalogo reducido a su primera fila.
+
+---
+
+## ADR-0063 — Render por silueta de familia y tinte por cultivo: cuarenta casillas de atlas, no quinientas
+
+Fase: W8 · Fecha: 2026-08-26
+
+### Estado
+
+Aceptada. Enmienda ADR-0020 y ADR-0023.
+
+### Contexto
+
+El atlas de uso tenia quince casillas indexadas por el estado del ciclo, y `paintEars` dibujaba
+literalmente una espiga de trigo. Con un cultivo era exacto. Con sesenta y dos, los sesenta y dos se
+verian identicos sobre el mapa: el jugador no podria distinguir su trigal de su patatal sin abrir un
+panel, que es justo lo que §60 pide evitar.
+
+Sesenta y dos cultivos por ocho fases son cuatrocientas noventa y seis casillas, que no caben en un
+atlas extruido y serian cuatrocientas noventa y seis rutinas de dibujo escritas a mano.
+
+### Decision
+
+No hacen falta, porque **solo cuatro de las ocho fases muestran planta**. Barbecho, arado, labrado y
+sembrado son suelo, y una semilla no se distingue a dieciseis pixeles: esas cuatro siguen siendo una
+casilla cada una. Germinando, creciendo, listo y cosechado si dependen del cultivo, y ahi es donde el
+atlas se multiplica.
+
+Se multiplica por **silueta y no por cultivo**. Siete siluetas —espiga, vaina, capitulo, tuberculo,
+roseta, mata y flor— que son deliberadamente mas gruesas que la familia, porque lo que el lienzo tiene
+que transmitir a dieciseis pixeles es la forma de la planta, no su especie. El cultivo se distingue por
+el tinte, que ya viaja por celda.
+
+La aritmetica: las quince casillas actuales se conservan **sin repintar un pixel** y pasan a ser la
+silueta de espiga; las otras seis anaden cuatro cada una. Treinta y nueve casillas en cuarenta huecos,
+144 x 90 pixeles, frente a los 72 x 72 de hoy. Las casillas nuevas van al final del orden, de modo que
+ningun indice existente se mueve y el contrato de indices que la cabecera del fichero documenta se
+preserva.
+
+`growthTint` conserva firma y rampa, y se le anade un hermano por cultivo. `CROP_TINTS.WHEAT` se fija a
+proposito al final de la rampa, de modo que el trigo se dibuja exactamente como antes y las pruebas
+doradas del atlas y de las casillas sobreviven intactas.
+
+Los tokens CSS siguen siendo ocho, uno por fase, y no sesenta y dos. Emitir sesenta y dos seria publicar
+un contrato que nadie lee; el color por cultivo se sirve en linea con un helper, como ya se hace con el
+color del terreno.
+
+El `cropId` cruza a la escena por `FieldRenderState`, que es la costura que ya existia. La escena sigue
+sin importar ningun store, que es la regla de zona que ESLint impone.
+
+### Consecuencias
+
+El atlas pasa de 20,7 KB a 51,8 KB de RGBA. Es dos veces y media, y sigue siendo una fraccion de lo que
+costaria cualquiera de las alternativas.
+
+El trabajo de arte genuinamente nuevo son seis rutinas de dibujo de unas veinte lineas cada una. Es
+acotado, pero es trabajo de pixel a dieciseis por dieciseis y no sale bien a la primera.
+
+El minimapa mezcla el tinte en las fases con planta, de modo que tambien distingue cultivos.
+
+### Alternativas descartadas
+
+**Un atlas por cultivo, cargado bajo demanda.** Sesenta y dos atlas de 51,8 KB son 3,3 MB y sesenta y dos
+pasadas de generacion en el arranque, contra lo que ADR-0023 decidio sobre el coste del arranque.
+
+**Una casilla por cultivo y fase.** Cuatrocientas noventa y seis casillas y otras tantas rutinas de
+dibujo. El coste no es el tamanio del atlas, es que nadie las escribiria bien.
+
+**Solo tinte, sin siluetas nuevas.** Seria lo mas barato y es lo que hace ilegible el mapa para quien no
+distingue dos verdes: §60 pide que el patron lleve el significado y el color solo lo refuerce, que es la
+razon por la que las ocho fases se dibujan con patrones distintos y no con ocho tonos.

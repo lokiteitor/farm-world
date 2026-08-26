@@ -17,7 +17,7 @@
 // Every computed figure comes from `shared/`, through the same functions the server runs.
 // Nothing in this file restates a rule.
 
-import { WHEAT } from '../../shared/config/crops.js';
+import { WHEAT } from '../../shared/config/crops/index.js';
 import { STARTING_CAPITAL } from '../../shared/config/economy.js';
 import { NATURAL_FOREST, PINE } from '../../shared/config/forestry.js';
 import { MACHINE_CATALOGUE } from '../../shared/config/machines.js';

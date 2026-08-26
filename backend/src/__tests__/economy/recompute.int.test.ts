@@ -41,7 +41,6 @@ import {
   MachineType,
   Money,
   STARTING_CAPITAL,
-  StorageResource,
   WHEAT,
   accrueContinuousCosts,
   cropSaleRevenue,
@@ -178,12 +177,7 @@ describe('el coste historico recalculado desde cero', () => {
         const player = await createEconomyPlayer(harness, `recompute-${run}`, {
           withWorkerHome: true,
         });
-        await depositStock(
-          harness,
-          player.farmId,
-          StorageResource.WHEAT_LITERS,
-          INITIAL_STOCK_LITERS,
-        );
+        await depositStock(harness, player.farmId, 'WHEAT', INITIAL_STOCK_LITERS);
 
         const openedAt = toGameMsValue(
           (
@@ -240,7 +234,7 @@ describe('el coste historico recalculado desde cero', () => {
             await withPlayerAdvanced(harness.services, player.playerId, async (ctx) =>
               sellStock(ctx, {
                 farmId: player.farmId,
-                resource: StorageResource.WHEAT_LITERS,
+                item: 'WHEAT',
                 quantityUnits: step.sellUnits,
                 idempotencyKey: `recompute:${player.playerId}:${soldUnits}:${step.sellUnits}`,
               }),

@@ -23,17 +23,19 @@
 
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  CROP_IDS,
   DM3_PER_M3,
   Money,
   PINE,
   STARTING_CAPITAL,
+  STORAGE_RESOURCES,
   StorageResource,
   ValidationCode,
   WHEAT,
   cropSaleRevenue,
   woodSaleRevenue,
 } from '../../shared/index.js';
-import { createHarness, type Harness } from '../harness.js';
+import { createHarness, readStock, type Harness } from '../harness.js';
 import {
   balanceOf,
   createEconomyPlayer,
@@ -60,14 +62,14 @@ afterAll(async () => {
 describe('POST /api/market/sell', () => {
   it('abona exactamente 18.630 por 20.700 litros a 0,90 (precio de la revision de balance)', async () => {
     const player = await createEconomyPlayer(harness, 'sell-golden');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, FIRST_HARVEST_LITERS);
+    await depositStock(harness, player.farmId, 'WHEAT', FIRST_HARVEST_LITERS);
 
     const { statusCode, body } = await postSell(
       harness,
       player.accessToken,
       {
         farmId: player.farmId,
-        resource: StorageResource.WHEAT_LITERS,
+        item: 'WHEAT',
         quantityUnits: FIRST_HARVEST_LITERS,
       },
       'sell-golden-1',
@@ -94,12 +96,12 @@ describe('POST /api/market/sell', () => {
 
   it('rechaza vender mas de lo almacenado con INSUFFICIENT_STOCK', async () => {
     const player = await createEconomyPlayer(harness, 'sell-oversell');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 1_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 1_000);
 
     const { statusCode, body } = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WHEAT_LITERS, quantityUnits: 1_001 },
+      { farmId: player.farmId, item: 'WHEAT', quantityUnits: 1_001 },
       'sell-oversell-1',
     );
 
@@ -113,22 +115,19 @@ describe('POST /api/market/sell', () => {
     expect(details['availableUnits']).toBe(1_000);
 
     // Nothing moved: neither the stock nor the balance.
-    const farm = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: player.farmId },
-      select: { storedWheatLiters: true },
-    });
-    expect(farm.storedWheatLiters).toBe(1_000);
+    const farm = await readStock(harness, player.farmId, 'WHEAT');
+    expect(farm.storedUnits).toBe(1_000);
     expect(await balanceOf(harness, player.playerId)).toBe(Money.toString(STARTING_CAPITAL));
   });
 
   it('sin cantidad vende todas las existencias del recurso', async () => {
     const player = await createEconomyPlayer(harness, 'sell-all');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 5_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 5_000);
 
     const { statusCode, body } = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WHEAT_LITERS },
+      { farmId: player.farmId, item: 'WHEAT' },
       'sell-all-1',
     );
 
@@ -144,7 +143,7 @@ describe('POST /api/market/sell', () => {
     const { statusCode, body } = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WHEAT_LITERS },
+      { farmId: player.farmId, item: 'WHEAT' },
       'sell-empty-1',
     );
 
@@ -154,12 +153,12 @@ describe('POST /api/market/sell', () => {
 
   it('vende madera por decimetro cubico, al precio por metro cubico de GDD 133', async () => {
     const player = await createEconomyPlayer(harness, 'sell-wood', { withWoodStorage: true });
-    await depositStock(harness, player.farmId, StorageResource.WOOD_M3, 2 * DM3_PER_M3);
+    await depositStock(harness, player.farmId, 'WOOD', 2 * DM3_PER_M3);
 
     const { statusCode, body } = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WOOD_M3 },
+      { farmId: player.farmId, item: 'WOOD' },
       'sell-wood-1',
     );
 
@@ -175,18 +174,18 @@ describe('POST /api/market/sell', () => {
 
   it('la misma clave de idempotencia vende una sola vez', async () => {
     const player = await createEconomyPlayer(harness, 'sell-idem');
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 3_000);
+    await depositStock(harness, player.farmId, 'WHEAT', 3_000);
 
     const first = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WHEAT_LITERS, quantityUnits: 1_000 },
+      { farmId: player.farmId, item: 'WHEAT', quantityUnits: 1_000 },
       'sell-idem-1',
     );
     const second = await postSell(
       harness,
       player.accessToken,
-      { farmId: player.farmId, resource: StorageResource.WHEAT_LITERS, quantityUnits: 1_000 },
+      { farmId: player.farmId, item: 'WHEAT', quantityUnits: 1_000 },
       'sell-idem-1',
     );
 
@@ -194,11 +193,8 @@ describe('POST /api/market/sell', () => {
     expect(second.statusCode).toBe(200);
     expect(second.body).toEqual(first.body);
 
-    const farm = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: player.farmId },
-      select: { storedWheatLiters: true },
-    });
-    expect(farm.storedWheatLiters).toBe(2_000);
+    const farm = await readStock(harness, player.farmId, 'WHEAT');
+    expect(farm.storedUnits).toBe(2_000);
     const entries = await harness.prisma.ledgerEntry.count({
       where: { playerId: player.playerId, type: 'CROP_SALE' },
     });
@@ -208,12 +204,12 @@ describe('POST /api/market/sell', () => {
   it('rechaza la granja de otro jugador con NOT_OWNED', async () => {
     const owner = await createEconomyPlayer(harness, 'sell-owner');
     const intruder = await createEconomyPlayer(harness, 'sell-intruder');
-    await depositStock(harness, owner.farmId, StorageResource.WHEAT_LITERS, 100);
+    await depositStock(harness, owner.farmId, 'WHEAT', 100);
 
     const { statusCode, body } = await postSell(
       harness,
       intruder.accessToken,
-      { farmId: owner.farmId, resource: StorageResource.WHEAT_LITERS, quantityUnits: 100 },
+      { farmId: owner.farmId, item: 'WHEAT', quantityUnits: 100 },
       'sell-intruder-1',
     );
 
@@ -229,14 +225,16 @@ describe('GET /api/market/prices', () => {
 
     expect(statusCode, JSON.stringify(body)).toBe(200);
     const prices = body['prices'] as Record<string, unknown>[];
-    expect(prices).toHaveLength(2);
+    // Una linea por cultivo del catalogo, mas la madera: el precio es del cultivo, no de la
+    // categoria de almacen, que es lo que hace que elegir cultivo sea una decision.
+    expect(prices).toHaveLength(CROP_IDS.length + 1);
 
-    const wheat = prices.find((price) => price['resource'] === StorageResource.WHEAT_LITERS);
+    const wheat = prices.find((price) => price['item'] === 'WHEAT');
     expect(wheat?.['pricePerStoredUnit']).toBe(Money.toString(WHEAT.sellPricePerLiter));
     expect(wheat?.['storedUnit']).toBe('L');
     expect(wheat?.['displayUnit']).toBe('L');
 
-    const wood = prices.find((price) => price['resource'] === StorageResource.WOOD_M3);
+    const wood = prices.find((price) => price['item'] === 'WOOD');
     expect(wood?.['pricePerDisplayUnit']).toBe(Money.toString(PINE.sellPricePerM3));
     expect(wood?.['displayUnit']).toBe('m3');
     // The price per stored unit is the price per cubic metre divided by a thousand, exactly.
@@ -263,28 +261,36 @@ describe('GET /api/inventory', () => {
     const player: EconomyPlayer = await createEconomyPlayer(harness, 'inventory-usage', {
       withWoodStorage: true,
     });
-    await depositStock(harness, player.farmId, StorageResource.WHEAT_LITERS, 24_500);
+    await depositStock(harness, player.farmId, 'WHEAT', 24_500);
 
     const { statusCode, body } = await getJson(harness, player.accessToken, '/api/inventory');
     expect(statusCode, JSON.stringify(body)).toBe(200);
 
     const farms = body['farms'] as Record<string, unknown>[];
     expect(farms).toHaveLength(1);
+    // Una linea por pila con contenido, y ninguna por las vacias: el inventario es
+    // proporcional a lo que la granja tiene, no al tamanio del catalogo.
     const lines = farms[0]?.['lines'] as Record<string, unknown>[];
-    // A line per resource, including the one with no stock: a panel has to be able to draw
-    // "0 of 0" for a farm that has no store yet.
-    expect(lines).toHaveLength(2);
+    expect(lines).toHaveLength(1);
 
-    const wheat = lines.find((line) => line['resource'] === StorageResource.WHEAT_LITERS);
-    const usage = wheat?.['usage'] as Record<string, unknown>;
+    const wheat = lines.find((line) => line['item'] === 'WHEAT');
+    expect(wheat?.['category']).toBe(StorageResource.GRAIN_LITERS);
+    expect(wheat?.['storedUnits']).toBe(24_500);
+    expect(wheat?.['marketValue']).toBe(Money.toString(cropSaleRevenue(WHEAT, 24_500)));
+    expect(wheat?.['displayDivisor']).toBe(1);
+
+    // La capacidad va por categoria, que es lo que un edificio concede, y se informa
+    // completa: un panel tiene que poder dibujar "0 de 0" para la que no tiene almacen.
+    const categories = farms[0]?.['categories'] as Record<string, unknown>[];
+    expect(categories).toHaveLength(STORAGE_RESOURCES.length);
+    const grain = categories.find((row) => row['category'] === StorageResource.GRAIN_LITERS);
+    const usage = grain?.['usage'] as Record<string, unknown>;
     expect(usage['storedUnits']).toBe(24_500);
     expect(usage['capacityUnits']).toBe(100_000);
     // 24.5 % of the silo of GDD section 27.
     expect(usage['occupancyBp']).toBe(2_450);
-    expect(wheat?.['marketValue']).toBe(Money.toString(cropSaleRevenue(WHEAT, 24_500)));
-    expect(wheat?.['displayDivisor']).toBe(1);
 
-    const wood = lines.find((line) => line['resource'] === StorageResource.WOOD_M3);
+    const wood = categories.find((row) => row['category'] === StorageResource.WOOD_M3);
     expect((wood?.['usage'] as Record<string, unknown>)['capacityUnits']).toBe(500 * DM3_PER_M3);
     expect(wood?.['displayDivisor']).toBe(DM3_PER_M3);
   });

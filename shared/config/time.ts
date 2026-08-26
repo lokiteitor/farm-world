@@ -51,11 +51,27 @@ export const INITIAL_ANCHOR_GAME_MS: GameMs = gameHoursToGameMs(
 );
 
 /**
- * Game hours in a game day. Used only to display the player's own day counter
- * (GDD section 61), which is why there is no season: seasons are outside the MVP
- * (GDD sections 82 and 86).
+ * Game hours in a game day. It drives the player's own day counter (GDD section 61)
+ * and, since the crop catalogue grew past one crop, the length of a season.
  */
 export const GAME_HOURS_PER_GAME_DAY = 24;
+
+/**
+ * Game days in a season, and therefore the length of the seasonal cycle.
+ *
+ * Invented value. GDD section 82 lists `season` as future work and section 86 puts it
+ * outside the strict MVP; the departure and its reasoning are recorded in
+ * docs/erratas-gdd-stack.md and in the ADR. Thirty days is 720 game hours, so a little
+ * over two full cycles of the 325 h of GDD section 118 fit in one season, which is what
+ * makes a sowing window a planning decision instead of a lockout. The year is four of
+ * them, 2 880 game hours, which at the default multiplier of `DEFAULT_GAME_RATE` is
+ * 120 game days and five real ones: the seasonal loop is observable within a week of
+ * play rather than being a thing the player is told about and never sees.
+ */
+export const GAME_DAYS_PER_SEASON = 30;
+
+/** Game hours in a season. Derived, never written by hand. */
+export const GAME_HOURS_PER_SEASON = GAME_DAYS_PER_SEASON * GAME_HOURS_PER_GAME_DAY;
 
 /**
  * Real time window within which a due event gets an alarm clock in Redis (plan
@@ -63,6 +79,16 @@ export const GAME_HOURS_PER_GAME_DAY = 24;
  * bounds the memory of Redis with tens of thousands of trees in the world and keeps
  * a re-anchoring to rescheduling a few dozen jobs.
  */
+/**
+ * Game instant the first spring of the world starts at.
+ *
+ * It is the clock anchor and not zero, because the anchor is not zero either: a world
+ * starts at 960 game hours so that a generated old growth tree can carry a planting
+ * instant in the past (see `INITIAL_ANCHOR_GAME_MS`). Anchoring the seasons anywhere
+ * else would start every world part way through a season.
+ */
+export const SEASON_EPOCH_GAME_MS: GameMs = INITIAL_ANCHOR_GAME_MS;
+
 export const SCHEDULE_HORIZON_REAL_MS = 24 * 60 * 60 * 1000;
 
 /**

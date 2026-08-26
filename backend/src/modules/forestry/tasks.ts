@@ -90,11 +90,14 @@ import { toFarmDto } from '../farms/readModel.js';
 import {
   depositStorage,
   loadBuildings,
+  loadFarmStock,
+  loadFarmStorage,
   requireFarm,
   reserveStorage,
   storageCapacityError,
   storageUsageOf,
   type FarmRow,
+  type FarmStorageRow,
 } from '../farms/service.js';
 import { machineUpsertedFrame } from '../machinery/readModel.js';
 import {
@@ -513,6 +516,7 @@ export async function assignFellTask(
   const reservation = await reserveStorage(
     context.tx,
     farm.id,
+    'WOOD',
     StorageResource.WOOD_M3,
     batch.volumeDm3,
   );
@@ -909,6 +913,7 @@ async function completeFell(
     const deposit = await depositStorage(
       tx,
       task.destinationFarmId,
+      'WOOD',
       StorageResource.WOOD_M3,
       produced.volumeDm3,
       { releaseReservedUnits: task.reservedStorageUnits ?? 0 },
@@ -1080,27 +1085,18 @@ async function farmFrames(
 ): Promise<readonly DomainEventDraft[]> {
   const farm = await context.tx.farm.findUnique({
     where: { id: farmId },
-    select: {
-      id: true,
-      playerId: true,
-      name: true,
-      storedWheatLiters: true,
-      reservedWheatLiters: true,
-      capacityWheatLiters: true,
-      storedWoodDm3: true,
-      reservedWoodDm3: true,
-      capacityWoodDm3: true,
-      createdAtGameMs: true,
-    },
+    select: { id: true, playerId: true, name: true, createdAtGameMs: true },
   });
   if (farm === null) {
     return [];
   }
   const row: FarmRow = farm;
   const buildings = await loadBuildings(context.tx, [farmId]);
+  const storage = await loadFarmStorage(context.tx, [farmId]);
+  const stock = await loadFarmStock(context.tx, [farmId]);
   return [
-    { type: 'FARM_UPSERTED', payload: { farm: toFarmDto(row, buildings) } },
-    { type: 'INVENTORY_UPSERTED', payload: { farms: [toInventoryFarm(row)] } },
+    { type: 'FARM_UPSERTED', payload: { farm: toFarmDto(row, buildings, storage) } },
+    { type: 'INVENTORY_UPSERTED', payload: { farms: [toInventoryFarm(row, storage, stock)] } },
   ];
 }
 
@@ -1164,8 +1160,8 @@ export async function releaseForestryTask(
 }
 
 /** Free wood capacity of a farm, in cubic decimetres. */
-export function freeWoodCapacity(farm: FarmRow): number {
-  const usage = storageUsageOf(farm, StorageResource.WOOD_M3);
+export function freeWoodCapacity(storage: readonly FarmStorageRow[]): number {
+  const usage = storageUsageOf(storage, StorageResource.WOOD_M3);
   const free = usage.capacityUnits - usage.storedUnits - usage.reservedUnits;
   return free > 0 ? free : 0;
 }

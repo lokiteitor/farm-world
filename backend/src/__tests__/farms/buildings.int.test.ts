@@ -27,6 +27,8 @@ import {
   LandUse,
   Money,
   SelectionPurpose,
+  STORAGE_RESOURCES,
+  StorageResource,
   TerrainType,
   ValidationCode,
   buildingResaleValue,
@@ -177,8 +179,12 @@ describe('POST /api/farms', () => {
     expect(farm['hasWorkshop']).toBe(false);
     expect(farm['machineSlots']).toEqual({ used: 0, total: 0 });
     expect(farm['workerSlots']).toEqual({ used: 0, total: 0 });
-    // No silo yet, so the capacity is zero and the occupancy is not a division by zero.
-    expect(farm['wheat']).toEqual({
+    // Sin silo todavia, asi que la capacidad es cero y la ocupacion no es una division por
+    // cero. Se informan las cinco categorias, incluidas las vacias: el panel dibuja las
+    // mismas filas antes y despues del primer almacen.
+    const storage = farm['storage'] as { category: string; usage: Record<string, number> }[];
+    expect(storage).toHaveLength(STORAGE_RESOURCES.length);
+    expect(storage.find((row) => row.category === StorageResource.GRAIN_LITERS)?.usage).toEqual({
       storedUnits: 0,
       reservedUnits: 0,
       capacityUnits: 0,
@@ -316,8 +322,11 @@ describe('POST /api/farms/:farmId/buildings', () => {
 
     // The silo grants the farm its storage capacity, through the trigger and not through
     // the application (GDD section 27).
-    const farm = (result['farm'] as { wheat: { capacityUnits: number } }).wheat;
-    expect(farm.capacityUnits).toBe(definition.capacity);
+    const rows = (
+      result['farm'] as { storage: { category: string; usage: { capacityUnits: number } }[] }
+    ).storage;
+    const grain = rows.find((row) => row.category === StorageResource.GRAIN_LITERS);
+    expect(grain?.usage.capacityUnits).toBe(definition.capacity);
   });
 
   it('rechaza una huella que solapa con un edificio ya construido', async () => {

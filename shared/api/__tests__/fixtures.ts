@@ -58,22 +58,27 @@ export const playerFixture: PlayerDto = {
   atGameMs: AT_GAME_MS,
 };
 
+const EMPTY_USAGE = { storedUnits: 0, reservedUnits: 0, capacityUnits: 0, occupancyBp: 0 };
+
 export const farmFixture: FarmDto = {
   id: 'frm_000000000001',
   name: 'Granja del valle',
-  wheat: {
-    storedUnits: 24_500,
-    reservedUnits: 0,
-    // Silo of GDD section 116.
-    capacityUnits: 100_000,
-    occupancyBp: 2450,
-  },
-  wood: {
-    storedUnits: 0,
-    reservedUnits: 0,
-    capacityUnits: 0,
-    occupancyBp: 0,
-  },
+  storage: [
+    {
+      category: 'GRAIN_LITERS',
+      usage: {
+        storedUnits: 24_500,
+        reservedUnits: 0,
+        // Silo of GDD section 116.
+        capacityUnits: 100_000,
+        occupancyBp: 2450,
+      },
+    },
+    { category: 'FORAGE_LITERS', usage: EMPTY_USAGE },
+    { category: 'PRODUCE_LITERS', usage: EMPTY_USAGE },
+    { category: 'INDUSTRIAL_LITERS', usage: EMPTY_USAGE },
+    { category: 'WOOD_M3', usage: EMPTY_USAGE },
+  ],
   machineSlots: { used: 3, total: 4 },
   workerSlots: { used: 1, total: 4 },
   hasWorkshop: false,
@@ -249,23 +254,24 @@ export const ledgerEntryFixture: LedgerEntryDto = {
 
 export const inventoryFarmFixture: InventoryFarm = {
   farmId: farmFixture.id,
+  categories: farmFixture.storage.map((row) => ({
+    category: row.category,
+    storedUnit: row.category === 'WOOD_M3' ? 'dm3' : 'L',
+    displayUnit: row.category === 'WOOD_M3' ? 'm3' : 'L',
+    displayDivisor: row.category === 'WOOD_M3' ? 1000 : 1,
+    usage: row.usage,
+  })),
   lines: [
     {
-      resource: 'WHEAT_LITERS',
+      item: 'WHEAT',
+      category: 'GRAIN_LITERS',
       storedUnit: 'L',
       displayUnit: 'L',
       displayDivisor: 1,
-      usage: farmFixture.wheat,
-      // 24 500 litres at 0.22, the price of GDD sections 82 and 119.
-      marketValue: '5390.0000',
-    },
-    {
-      resource: 'WOOD_M3',
-      storedUnit: 'dm3',
-      displayUnit: 'm3',
-      displayDivisor: 1000,
-      usage: farmFixture.wood,
-      marketValue: '0.0000',
+      storedUnits: 24_500,
+      reservedUnits: 0,
+      // 24 500 litres at 0.90, the price of the balance revision of 2026-08.
+      marketValue: '22050.0000',
     },
   ],
 };
@@ -273,7 +279,7 @@ export const inventoryFarmFixture: InventoryFarm = {
 export const noticeFixture: NoticeDto = {
   kind: 'HARVEST_OVERFLOW',
   severity: 'WARNING',
-  code: 'SILO_CAPACITY_EXCEEDED',
+  code: 'STORAGE_CAPACITY_EXCEEDED',
   message: 'Parte de la cosecha no cupo en el silo y se desperdicio.',
   details: { wastedUnits: 1200, farmId: farmFixture.id },
   atGameMs: AT_GAME_MS,

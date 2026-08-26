@@ -42,7 +42,7 @@ import {
   projectWeedLevel,
   type PlayerId,
 } from '../../shared/index.js';
-import { bearer, createHarness, registerViaHttp, type Harness } from '../harness.js';
+import { bearer, createHarness, readStock, registerViaHttp, type Harness } from '../harness.js';
 import {
   NARRATIVE_FIELD_CELLS,
   cleanUp,
@@ -297,12 +297,9 @@ describe('la cosecha', () => {
 
     // La reserva de capacidad de la asignacion es exactamente lo que se va a depositar
     // (plan 5.4, capa uno).
-    const reservedFarm = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { reservedWheatLiters: true, storedWheatLiters: true },
-    });
-    expect(reservedFarm.reservedWheatLiters).toBe(task['reservedStorageUnits']);
-    expect(reservedFarm.storedWheatLiters).toBe(0);
+    const reservedFarm = await readStock(harness, farm.farmId, 'WHEAT');
+    expect(reservedFarm.reservedUnits).toBe(task['reservedStorageUnits']);
+    expect(reservedFarm.storedUnits).toBe(0);
 
     // La regla pura, recalculada aqui y no copiada de la respuesta: las malezas de §78
     // siguen creciendo mientras la cosechadora trabaja, porque READY_TO_HARVEST es uno de
@@ -312,7 +309,7 @@ describe('la cosecha', () => {
       updatedAtGameMs: startGameMs,
       toGameMs: endGameMs,
       cropCycleState: CropCycleState.READY_TO_HARVEST,
-      crop: WHEAT,
+      land: WHEAT,
     });
     const expected = finalYieldLiters({
       cellCount: NARRATIVE_FIELD_CELLS,
@@ -326,12 +323,9 @@ describe('la cosecha', () => {
     harness.advanceGameHours(120);
     await get('/api/tasks', await login(label));
 
-    const stored = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { storedWheatLiters: true, reservedWheatLiters: true },
-    });
-    expect(stored.storedWheatLiters).toBe(expected);
-    expect(stored.reservedWheatLiters).toBe(0);
+    const stored = await readStock(harness, farm.farmId, 'WHEAT');
+    expect(stored.storedUnits).toBe(expected);
+    expect(stored.reservedUnits).toBe(0);
 
     // El ciclo vuelve a tierra virgen y la fertilidad baja lo que §77 y §82 fijan.
     const field = await harness.prisma.field.findUniqueOrThrow({
@@ -390,12 +384,9 @@ describe('la cosecha', () => {
     harness.advanceGameHours(120);
     await get('/api/tasks', await login(label));
 
-    const stored = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { storedWheatLiters: true, reservedWheatLiters: true },
-    });
-    expect(stored.storedWheatLiters).toBe(siloCapacity);
-    expect(stored.reservedWheatLiters).toBe(0);
+    const stored = await readStock(harness, farm.farmId, 'WHEAT');
+    expect(stored.storedUnits).toBe(siloCapacity);
+    expect(stored.reservedUnits).toBe(0);
 
     const waste = await harness.prisma.ledgerEntry.findMany({
       where: { playerId, type: 'HARVEST_WASTE' },
@@ -453,7 +444,7 @@ describe('el manejador de TASK_COMPLETE', () => {
     const after = await snapshot(playerId, fieldId, workerId, farm.farmId);
     expect(after.field.cropCycleState).toBe(CropCycleState.VIRGIN);
     expect(after.worker.skillBp).toBe(7100);
-    expect(after.farm.storedWheatLiters).toBeGreaterThan(0);
+    expect(after.farm.storedUnits).toBeGreaterThan(0);
 
     // Una segunda entrega del mismo vencimiento. La puerta exterior de `advancePlayer` ya
     // reclamo la fila del evento, asi que devolverla a PENDING es la unica forma de llegar
@@ -473,7 +464,7 @@ describe('el manejador de TASK_COMPLETE', () => {
     expect(again.field.fertilityBp).toBe(after.field.fertilityBp);
     expect(again.worker.skillBp).toBe(after.worker.skillBp);
     expect(again.worker.completedTaskCount).toBe(after.worker.completedTaskCount);
-    expect(again.farm.storedWheatLiters).toBe(after.farm.storedWheatLiters);
+    expect(again.farm.storedUnits).toBe(after.farm.storedUnits);
     expect(again.taskCount).toBe(after.taskCount);
   });
 
@@ -543,7 +534,7 @@ async function snapshot(
 ): Promise<{
   readonly field: { readonly cropCycleState: CropCycleState; readonly fertilityBp: number };
   readonly worker: { readonly skillBp: number; readonly completedTaskCount: number };
-  readonly farm: { readonly storedWheatLiters: number };
+  readonly farm: { readonly storedUnits: number; readonly reservedUnits: number };
   readonly taskCount: number;
 }> {
   const field = await harness.prisma.field.findUniqueOrThrow({
@@ -554,10 +545,7 @@ async function snapshot(
     where: { id: workerId },
     select: { skillBp: true, completedTaskCount: true },
   });
-  const farm = await harness.prisma.farm.findUniqueOrThrow({
-    where: { id: farmId },
-    select: { storedWheatLiters: true },
-  });
+  const farm = await readStock(harness, farmId, 'WHEAT');
   const taskCount = await harness.prisma.task.count({ where: { playerId } });
   return { field, worker, farm, taskCount };
 }

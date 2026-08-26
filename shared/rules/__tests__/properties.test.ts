@@ -1,6 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
-import { WHEAT } from '../../config/crops.js';
+import { WHEAT } from '../../config/crops/index.js';
 import { CONDITION_FACTOR_CURVE, FERTILITY_TO_YIELD_CURVE } from '../../config/curves.js';
 import { MACHINE_CATALOGUE } from '../../config/machines.js';
 import { WEED_GROWTH_STATES } from '../../config/transitions.js';
@@ -355,7 +355,7 @@ describe('lazily accrued attributes', () => {
             updatedAtGameMs: gameMs(from),
             toGameMs: gameMs(from + elapsed),
             cropCycleState: state,
-            crop: WHEAT,
+            land: WHEAT,
           });
           expect(projected).toBeGreaterThanOrEqual(level);
           expect(projected).toBeLessThanOrEqual(BP_ONE);

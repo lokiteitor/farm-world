@@ -42,7 +42,7 @@ import {
   type PlayerId,
   type World,
 } from '../../shared/index.js';
-import { bearer, type Harness } from '../harness.js';
+import { bearer, clearStock, type Harness } from '../harness.js';
 
 /** Chunks a rectangle search walks before it gives up. A chunk holds 1 024 cells. */
 const MAX_CHUNKS_SCANNED = 48;
@@ -222,7 +222,7 @@ export async function createForestryFarm(
       capacityMachines?: number;
       capacityWorkers?: number;
       capacityStorageUnits?: number;
-      storageResource?: 'WOOD_M3' | 'WHEAT_LITERS' | null;
+      storageResource?: 'WOOD_M3' | 'GRAIN_LITERS' | null;
     },
     originCellX: number,
   ): Promise<string> => {
@@ -363,10 +363,7 @@ export async function cleanUp(
   for (const playerId of playerIds) {
     // The stock has to go before the buildings that grant its capacity: `farms_stock_check`
     // compares the two in the same row, so demolishing a full store would violate it.
-    await harness.prisma.farm.updateMany({
-      where: { playerId },
-      data: { storedWheatLiters: 0, reservedWheatLiters: 0, storedWoodDm3: 0, reservedWoodDm3: 0 },
-    });
+    await clearStock(harness, [playerId]);
     await harness.prisma.scheduledEvent.deleteMany({ where: { playerId } });
     await harness.prisma.forestPlot.updateMany({
       where: { playerId },

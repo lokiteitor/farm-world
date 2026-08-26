@@ -28,6 +28,7 @@ import {
   toWireMoney,
   type BuildingDto,
   type BuildingId,
+  STORAGE_RESOURCES,
   type FarmDto,
   type FarmId,
   type FarmsReply,
@@ -37,9 +38,11 @@ import {
 import {
   capacitiesOf,
   loadBuildings,
+  loadFarmStorage,
   loadFarms,
   type BuildingRow,
   type FarmRow,
+  type FarmStorageRow,
 } from './service.js';
 
 /** The capacity a building declares, in the unit its kind implies. */
@@ -94,14 +97,22 @@ export function toBuildingDto(building: BuildingRow): BuildingDto {
   };
 }
 
-/** A farm as the contract carries it, with the buildings of that farm already loaded. */
-export function toFarmDto(farm: FarmRow, buildings: readonly BuildingRow[]): FarmDto {
-  const capacities = capacitiesOf(farm, buildings);
+/** A farm as the contract carries it, with the buildings and storage already loaded. */
+export function toFarmDto(
+  farm: FarmRow,
+  buildings: readonly BuildingRow[],
+  storage: readonly FarmStorageRow[],
+): FarmDto {
+  const capacities = capacitiesOf(farm, buildings, storage);
   return {
     id: capacities.farmId,
     name: capacities.name,
-    wheat: capacities.wheat,
-    wood: capacities.wood,
+    // Every category, in the declaration order of the vocabulary, including the ones with
+    // no store built: the panel draws the same rows before and after the first silo.
+    storage: STORAGE_RESOURCES.map((category) => ({
+      category,
+      usage: capacities.storage[category],
+    })),
     machineSlots: capacities.machineSlots,
     workerSlots: capacities.workerSlots,
     hasWorkshop: capacities.hasWorkshop,
@@ -114,21 +125,11 @@ export function toFarmDto(farm: FarmRow, buildings: readonly BuildingRow[]): Far
 export async function buildFarmDto(db: Db, targetFarmId: string): Promise<FarmDto> {
   const farm = await db.farm.findUniqueOrThrow({
     where: { id: targetFarmId },
-    select: {
-      id: true,
-      playerId: true,
-      name: true,
-      storedWheatLiters: true,
-      reservedWheatLiters: true,
-      capacityWheatLiters: true,
-      storedWoodDm3: true,
-      reservedWoodDm3: true,
-      capacityWoodDm3: true,
-      createdAtGameMs: true,
-    },
+    select: { id: true, playerId: true, name: true, createdAtGameMs: true },
   });
   const buildings = await loadBuildings(db, [farm.id]);
-  return toFarmDto(farm, buildings);
+  const storage = await loadFarmStorage(db, [farm.id]);
+  return toFarmDto(farm, buildings, storage);
 }
 
 /**
@@ -142,15 +143,15 @@ export async function buildFarmDto(db: Db, targetFarmId: string): Promise<FarmDt
  */
 export async function buildFarmsReply(db: Db, playerId: PlayerId): Promise<FarmsReply> {
   const farms = await loadFarms(db, playerId);
-  const buildings = await loadBuildings(
-    db,
-    farms.map((farm) => farm.id),
-  );
+  const farmIds = farms.map((farm) => farm.id);
+  const buildings = await loadBuildings(db, farmIds);
+  const storage = await loadFarmStorage(db, farmIds);
   return {
     farms: farms.map((farm) =>
       toFarmDto(
         farm,
         buildings.filter((building) => building.farmId === farm.id),
+        storage.filter((row) => row.farmId === farm.id),
       ),
     ),
     buildings: buildings.map(toBuildingDto),

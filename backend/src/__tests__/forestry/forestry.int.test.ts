@@ -54,7 +54,14 @@ import {
   type PlayerId,
   type World,
 } from '../../shared/index.js';
-import { bearer, createHarness, registerViaHttp, type Harness } from '../harness.js';
+import {
+  bearer,
+  createHarness,
+  readStock,
+  readStorage,
+  registerViaHttp,
+  type Harness,
+} from '../harness.js';
 import {
   WORKER_SKILL_BP,
   buyLand,
@@ -460,12 +467,9 @@ describe('el ciclo forestal sobre una parcela de edades fijadas', () => {
 
     await advanceAndSettle(7);
 
-    const farm = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: mainFarm.farmId },
-      select: { storedWoodDm3: true, reservedWoodDm3: true },
-    });
-    expect(farm.storedWoodDm3).toBe(expected.volumeDm3);
-    expect(farm.reservedWoodDm3).toBe(0);
+    const farm = await readStock(harness, mainFarm.farmId, 'WOOD');
+    expect(farm.storedUnits).toBe(expected.volumeDm3);
+    expect(farm.reservedUnits).toBe(0);
 
     const felled = (await treesOf(controlled.id)).filter(
       (tree) => tree.status === TreeStatus.FELLED,
@@ -515,7 +519,7 @@ describe('el ciclo forestal sobre una parcela de edades fijadas', () => {
       method: 'POST',
       url: '/api/market/sell',
       headers: { ...bearer(accessToken), 'idempotency-key': `wood-${randomUUID()}` },
-      payload: { farmId: mainFarm.farmId, resource: 'WOOD_M3' },
+      payload: { farmId: mainFarm.farmId, item: 'WOOD' },
     });
     expect(response.statusCode).toBe(200);
     const result = mutationResult(response.json<Record<string, unknown>>());
@@ -759,25 +763,22 @@ describe('el almacen de madera lleno (GDD 83, 97 y 136)', () => {
     const task = mutationResult(body)['task'] as Record<string, unknown>;
     expect(task['reservedStorageUnits']).toBe(TIGHT_CAPACITY_DM3);
 
-    const reserved = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { reservedWoodDm3: true, capacityWoodDm3: true },
-    });
-    expect(reserved.reservedWoodDm3).toBe(TIGHT_CAPACITY_DM3);
-    expect(reserved.capacityWoodDm3).toBe(TIGHT_CAPACITY_DM3);
+    const reserved = await readStock(harness, farm.farmId, 'WOOD');
+    expect(reserved.reservedUnits).toBe(TIGHT_CAPACITY_DM3);
+    expect((await readStorage(harness, farm.farmId, 'WOOD_M3')).capacityUnits).toBe(
+      TIGHT_CAPACITY_DM3,
+    );
 
     await advanceAndSettle(7);
 
-    const after = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { storedWoodDm3: true, reservedWoodDm3: true, capacityWoodDm3: true },
-    });
+    const after = await readStock(harness, farm.farmId, 'WOOD');
     // Lo producido, 4 x 1 800 = 7 200, no cabe: se acepta hasta la capacidad y se pierde el resto.
-    expect(after.storedWoodDm3).toBe(TIGHT_CAPACITY_DM3);
-    expect(after.reservedWoodDm3).toBe(0);
-    expect(after.storedWoodDm3).toBeLessThan(4 * MATURE_DM3);
+    expect(after.storedUnits).toBe(TIGHT_CAPACITY_DM3);
+    expect(after.reservedUnits).toBe(0);
+    expect(after.storedUnits).toBeLessThan(4 * MATURE_DM3);
     // Y la restriccion de la tabla nunca se vio violada, que es lo que hace viable el trabajo.
-    expect(after.storedWoodDm3 + after.reservedWoodDm3).toBeLessThanOrEqual(after.capacityWoodDm3);
+    const capacity = (await readStorage(harness, farm.farmId, 'WOOD_M3')).capacityUnits;
+    expect(after.storedUnits + after.reservedUnits).toBeLessThanOrEqual(capacity);
 
     const felled = await harness.prisma.tree.count({
       where: { forestPlotId: plotId, status: TreeStatus.FELLED },
@@ -851,12 +852,9 @@ describe('la cancelacion de una tala (GDD 106 y 132)', () => {
     // Y la reserva de madera se libera una sola vez. El doble descuento es el riesgo concreto
     // de esta costura: `cancelTask` ya libera la reserva de toda operacion que declare almacen
     // en la tabla de GDD 90, de modo que la estrategia de este modulo no debe repetirlo.
-    const after = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { reservedWoodDm3: true, storedWoodDm3: true },
-    });
-    expect(after.reservedWoodDm3).toBe(0);
-    expect(after.storedWoodDm3).toBe(0);
+    const after = await readStock(harness, farm.farmId, 'WOOD');
+    expect(after.reservedUnits).toBe(0);
+    expect(after.storedUnits).toBe(0);
 
     const plot = await harness.prisma.forestPlot.findUniqueOrThrow({
       where: { id: plotId },
@@ -937,12 +935,9 @@ describe('una tala por lote frente al planton (GDD 131)', () => {
     expect(sapling.status).toBe(TreeStatus.STANDING);
     expect(sapling.felledAtGameMs).toBeNull();
 
-    const store = await harness.prisma.farm.findUniqueOrThrow({
-      where: { id: farm.farmId },
-      select: { storedWoodDm3: true, reservedWoodDm3: true },
-    });
-    expect(store.storedWoodDm3).toBe(MATURE_DM3);
-    expect(store.reservedWoodDm3).toBe(0);
+    const store = await readStock(harness, farm.farmId, 'WOOD');
+    expect(store.storedUnits).toBe(MATURE_DM3);
+    expect(store.reservedUnits).toBe(0);
   });
 });
 

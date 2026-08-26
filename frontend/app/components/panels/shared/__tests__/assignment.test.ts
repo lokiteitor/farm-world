@@ -525,10 +525,10 @@ describe('el objetivo, el cultivo y el almacen (chequeos 7, 8 y 9)', () => {
       ValidationCode.STORAGE_REQUIRED,
     );
     expect(storageBlockingCode(TaskOperation.HARVEST, { hasStore: true, freeUnits: 0 })).toBe(
-      ValidationCode.SILO_CAPACITY_EXCEEDED,
+      ValidationCode.STORAGE_CAPACITY_EXCEEDED,
     );
     expect(storageBlockingCode(TaskOperation.FELL, { hasStore: true, freeUnits: 0 })).toBe(
-      ValidationCode.WOOD_STORAGE_CAPACITY_EXCEEDED,
+      ValidationCode.STORAGE_CAPACITY_EXCEEDED,
     );
     // Room for part of the harvest is a warning and not a refusal (GDD sections 83 y 97).
     expect(storageBlockingCode(TaskOperation.HARVEST, { hasStore: true, freeUnits: 1 })).toBeNull();

@@ -133,7 +133,7 @@ export function registerEconomyRoutes(app: FastifyInstance): void {
     const outcome = await withPlayerAdvanced(services, auth.playerId, async (ctx) => {
       const sale = await sellStock(ctx, {
         farmId: request.body.farmId,
-        resource: request.body.resource,
+        item: request.body.item,
         quantityUnits: quantityUnits === undefined ? null : quantityUnits,
         idempotencyKey: requestKey(auth.playerId, SELL_KEY_VERB, record.key),
       });
@@ -169,7 +169,8 @@ export function registerEconomyRoutes(app: FastifyInstance): void {
       seq: outcome.seq,
       atGameMs: toWireGameMs(outcome.atGameMs),
       result: {
-        resource: outcome.result.resource,
+        item: outcome.result.item,
+        category: outcome.result.category,
         quantitySoldUnits: outcome.result.quantitySoldUnits,
         revenue: toWireMoney(outcome.result.revenue),
         balanceAfter: toWireMoney(outcome.result.balanceAfter),

@@ -26,7 +26,7 @@ import {
   type MachineType,
   type PlayerId,
 } from '../../shared/index.js';
-import { type Harness } from '../harness.js';
+import { clearStock, type Harness } from '../harness.js';
 
 /** Cells of the field of GDD section 110. */
 export const NARRATIVE_FIELD_CELLS = 300;
@@ -116,7 +116,7 @@ export async function createTaskFarm(
         capacityMachines: 0,
         capacityWorkers: 0,
         capacityStorageUnits: siloCapacityLiters,
-        storageResource: StorageResource.WHEAT_LITERS,
+        storageResource: StorageResource.GRAIN_LITERS,
         builtAtGameMs: atGameMs,
       },
       select: { id: true },
@@ -247,15 +247,7 @@ export async function createFieldRow(
  */
 export async function cleanUp(harness: Harness, playerIds: readonly PlayerId[]): Promise<void> {
   for (const playerId of playerIds) {
-    await harness.prisma.farm.updateMany({
-      where: { playerId },
-      data: {
-        storedWheatLiters: 0,
-        reservedWheatLiters: 0,
-        storedWoodDm3: 0,
-        reservedWoodDm3: 0,
-      },
-    });
+    await clearStock(harness, [playerId]);
     await harness.prisma.field.updateMany({ where: { playerId }, data: { currentTaskId: null } });
     await harness.prisma.machine.updateMany({ where: { playerId }, data: { currentTaskId: null } });
     await harness.prisma.worker.updateMany({ where: { playerId }, data: { currentTaskId: null } });
