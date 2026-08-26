@@ -92,6 +92,13 @@ function isTextEntry(element: Element | null): boolean {
  * selection (docs/handoff/NOTES-w4d.md 2.4 and NOTES-w4g.md 1.7). Only the keyboard is
  * really at stake, but the predicate is one boolean by design, and losing the drag while
  * the caret is in a field costs nothing: the player is typing, not dragging.
+ *
+ * Publishing the verdict is not enough on its own for the keyboard, and it is worth saying
+ * where the other half lives: Phaser captures its panning keys by calling `preventDefault`
+ * from its own listener on `window`, which no flag of a scene can reach. So the camera
+ * releases that capture when this predicate turns false (`game/world/camera.ts`,
+ * `applyKeyCapture`); without it the field kept the focus, the camera stood still, and the
+ * "w" still never appeared.
  */
 const worldInputEnabled = computed(() => modals.value.length === 0 && !textEntryFocused.value);
 

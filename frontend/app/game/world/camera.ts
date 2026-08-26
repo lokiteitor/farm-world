@@ -42,6 +42,15 @@ import {
 } from './zoom';
 import type { CameraView } from '~/composables/useGameBridge';
 
+/**
+ * The panning keys, and the list that is captured from the browser.
+ *
+ * One constant because three places read it now: the creation of the `Key` objects, the
+ * capture and its removal. Two lists that have to agree is the usual way a key ends up
+ * captured forever.
+ */
+const PAN_KEYS = 'W,A,S,D,UP,DOWN,LEFT,RIGHT';
+
 /** Options of a camera order. */
 export interface CameraGoto {
   readonly cellX: number;
@@ -135,6 +144,9 @@ export class WorldCamera {
 
   private keys: Record<string, Phaser.Input.Keyboard.Key> = {};
 
+  /** The keyboard plugin of the scene, to add and remove the capture of `PAN_KEYS`. */
+  private keyboard: Phaser.Input.Keyboard.KeyboardPlugin | null = null;
+
   private readonly detachers: (() => void)[] = [];
 
   constructor(deps: WorldCameraDeps) {
@@ -202,6 +214,33 @@ export class WorldCamera {
     this.inputEnabled = enabled;
     if (!enabled) {
       this.dragging = false;
+    }
+    this.applyKeyCapture();
+  }
+
+  /**
+   * Adds or removes the capture of the panning keys, following the verdict of the arbiter.
+   *
+   * This is the half of the arbitration that was missing, and the half that ignoring the key
+   * does not fix. Phaser calls `preventDefault` on a captured key from its own `keydown`
+   * listener on `window`, before any code of this class and without consulting
+   * `inputEnabled`: with the capture on, typing "wasd" into a text field did not pan the
+   * camera, which `stepKeyboard` already prevented, but it did not type anything either,
+   * because the character never reached the input. The arrow keys and the caret went the same
+   * way. Only the capitals survived, because Phaser stands down while a modifier is held.
+   *
+   * It is removed rather than left on, because the capture is not free: it is global to the
+   * game and to the whole browser window.
+   */
+  private applyKeyCapture(): void {
+    const keyboard = this.keyboard;
+    if (keyboard === null) {
+      return;
+    }
+    if (this.inputEnabled) {
+      keyboard.addCapture(PAN_KEYS);
+    } else {
+      keyboard.removeCapture(PAN_KEYS);
     }
   }
 
@@ -544,10 +583,13 @@ export class WorldCamera {
 
     const keyboard = input.keyboard;
     if (keyboard !== null) {
-      this.keys = keyboard.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT') as Record<
-        string,
-        Phaser.Input.Keyboard.Key
-      >;
+      this.keyboard = keyboard;
+      // No capture when they are created: `addKeys` turns it on by default, and the capture
+      // of Phaser does not consult `inputEnabled`. `applyKeyCapture` owns it, and it does.
+      this.keys = keyboard.addKeys(PAN_KEYS, false) as Record<string, Phaser.Input.Keyboard.Key>;
+      // The arbiter may have spoken before the camera existed, so the standing verdict is
+      // applied here rather than assumed.
+      this.applyKeyCapture();
       const onKeyDown = (event: KeyboardEvent): void => {
         if (!this.inputEnabled) {
           return;
@@ -565,6 +607,8 @@ export class WorldCamera {
       keyboard.on('keydown', onKeyDown);
       this.detachers.push(() => {
         keyboard.off('keydown', onKeyDown);
+        keyboard.removeCapture(PAN_KEYS);
+        this.keyboard = null;
       });
     }
   }
