@@ -141,10 +141,10 @@ describe('visibleCellRect', () => {
     const far = visibleCellRect(scroll, SIZE, 0.25, CELL_PX);
     const nearCells = (near.maxCellX - near.minCellX + 1) * (near.maxCellY - near.minCellY + 1);
     const farCells = (far.maxCellX - far.minCellX + 1) * (far.maxCellY - far.minCellY + 1);
-    // The load case of plan section 9.3: about 8 100 cells at zoom 1 and about 130 000
-    // at zoom 0.25, which is the sixteenfold that makes one quad per cell impossible.
-    expect(nearCells).toBeGreaterThan(7_000);
-    expect(nearCells).toBeLessThan(9_000);
+    // With CELL_PX = 32: about 2 040 cells at zoom 1 and about 32 000
+    // at zoom 0.25, maintaining the sixteenfold ratio across zoom steps.
+    expect(nearCells).toBeGreaterThan(1_800);
+    expect(nearCells).toBeLessThan(2_500);
     expect(farCells / nearCells).toBeGreaterThan(15);
   });
 });

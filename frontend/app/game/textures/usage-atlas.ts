@@ -145,13 +145,17 @@ function paintEdge(tile: PixelBuffer, colour: number, alpha: number): void {
   const last = tile.width - 1;
   for (let step = 0; step < tile.width; step += 1) {
     blendPixel(tile, step, 0, colour, alpha);
+    blendPixel(tile, step, 1, colour, Math.round(alpha * 0.7));
     blendPixel(tile, step, last, colour, alpha);
+    blendPixel(tile, step, last - 1, colour, Math.round(alpha * 0.7));
     blendPixel(tile, 0, step, colour, alpha);
+    blendPixel(tile, 1, step, colour, Math.round(alpha * 0.7));
     blendPixel(tile, last, step, colour, alpha);
+    blendPixel(tile, last - 1, step, colour, Math.round(alpha * 0.7));
   }
 }
 
-/** Horizontal furrows every `period` rows, `thickness` rows each. */
+/** Horizontal furrows every `period` rows, `thickness` rows each with 3D ridge shading. */
 function paintFurrows(tile: PixelBuffer, colour: number, period: number, thickness: number): void {
   for (let y = 0; y < tile.height; y += 1) {
     if (y % period >= thickness) {
@@ -163,47 +167,61 @@ function paintFurrows(tile: PixelBuffer, colour: number, period: number, thickne
   }
 }
 
-/** A regular lattice of dots, which is how sowing reads without animation. */
+/** A regular lattice of seed dots with soil crumb accents. */
 function paintDots(tile: PixelBuffer, colour: number, period: number, offset: number): void {
-  for (let y = offset; y < tile.height - 1; y += period) {
-    for (let x = offset; x < tile.width - 1; x += period) {
+  for (let y = offset; y < tile.height - 2; y += period) {
+    for (let x = offset; x < tile.width - 2; x += period) {
       setPixel(tile, x, y, colour);
+      setPixel(tile, x + 1, y, colour);
+      setPixel(tile, x, y + 1, colour);
     }
   }
 }
 
-/** Vertical strokes of a crop in growth, of alternating height. */
+/** Vertical strokes of a crop in growth, with leaves and highlights. */
 function paintStalks(tile: PixelBuffer, colour: number, tipColour: number, period: number): void {
-  for (let x = 1; x < tile.width - 1; x += period) {
-    const height = Math.floor(x / period) % 2 === 0 ? 7 : 5;
-    const top = tile.height - 2 - height;
-    for (let y = top; y < tile.height - 2; y += 1) {
-      setPixel(tile, x, y, y === top ? tipColour : colour);
+  for (let x = 2; x < tile.width - 2; x += period) {
+    const height = Math.floor(x / period) % 2 === 0 ? 16 : 12;
+    const top = tile.height - 3 - height;
+    for (let y = top; y < tile.height - 3; y += 1) {
+      setPixel(tile, x, y, y <= top + 1 ? tipColour : colour);
     }
+    // Small side leaves
+    setPixel(tile, x - 1, top + 4, tipColour);
+    setPixel(tile, x + 1, top + 7, tipColour);
   }
 }
 
-/** Ears of wheat: a stalk with a wider head, which is what "ready" has to shout. */
+/** Ears of wheat: full golden heads with side grains and bristles. */
 function paintEars(tile: PixelBuffer, stalk: number, head: number): void {
-  for (let x = 2; x < tile.width - 1; x += 4) {
-    for (let y = 4; y < tile.height - 2; y += 1) {
+  for (let x = 4; x < tile.width - 3; x += 7) {
+    // Stalk
+    for (let y = 10; y < tile.height - 3; y += 1) {
       setPixel(tile, x, y, stalk);
     }
+    // Wheat ear / head
+    for (let row = 4; row < 12; row += 1) {
+      setPixel(tile, x, row, head);
+      setPixel(tile, x - 1, row, row % 2 === 0 ? head : stalk);
+      setPixel(tile, x + 1, row, row % 2 === 1 ? head : stalk);
+    }
+    // Awns / bristles at top
     setPixel(tile, x, 3, head);
-    setPixel(tile, x - 1, 4, head);
-    setPixel(tile, x + 1, 4, head);
-    setPixel(tile, x, 5, head);
+    setPixel(tile, x - 1, 2, head);
+    setPixel(tile, x + 1, 2, head);
   }
 }
 
-/** Stubble left after the harvest: short broken rows. */
+/** Stubble left after the harvest: short broken straw stems with soil texture. */
 function paintStubble(tile: PixelBuffer, colour: number): void {
-  for (let y = 2; y < tile.height - 1; y += 3) {
-    for (let x = 1; x < tile.width - 1; x += 1) {
+  for (let y = 3; y < tile.height - 2; y += 5) {
+    for (let x = 2; x < tile.width - 2; x += 3) {
       if ((x + y) % 4 === 0) {
         continue;
       }
       setPixel(tile, x, y, colour);
+      setPixel(tile, x, y + 1, colour);
+      setPixel(tile, x + 1, y, colour);
     }
   }
 }
@@ -212,13 +230,17 @@ function paintStubble(tile: PixelBuffer, colour: number): void {
 function paintDashedEdge(tile: PixelBuffer, colour: number, alpha: number): void {
   const last = tile.width - 1;
   for (let step = 0; step < tile.width; step += 1) {
-    if (Math.floor(step / 2) % 2 === 1) {
+    if (Math.floor(step / 3) % 2 === 1) {
       continue;
     }
     blendPixel(tile, step, 0, colour, alpha);
+    blendPixel(tile, step, 1, colour, Math.round(alpha * 0.7));
     blendPixel(tile, step, last, colour, alpha);
+    blendPixel(tile, step, last - 1, colour, Math.round(alpha * 0.7));
     blendPixel(tile, 0, step, colour, alpha);
+    blendPixel(tile, 1, step, colour, Math.round(alpha * 0.7));
     blendPixel(tile, last, step, colour, alpha);
+    blendPixel(tile, last - 1, step, colour, Math.round(alpha * 0.7));
   }
 }
 
@@ -258,7 +280,7 @@ export function paintUsageTile(tile: UsageTile): PixelBuffer {
         PALETTE.ownedForeign,
         OWNERSHIP_WASH_ALPHA,
       );
-      paintHatch(buffer, PALETTE.ownedForeign, OWNERSHIP_EDGE_ALPHA, 4);
+      paintHatch(buffer, PALETTE.ownedForeign, OWNERSHIP_EDGE_ALPHA, 6);
       break;
 
     // Virgin land inside a field is still grass (GDD section 13), so the tile is a
@@ -266,38 +288,38 @@ export function paintUsageTile(tile: UsageTile): PixelBuffer {
     // surface has been worked.
     case UsageTile.VIRGIN:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, crop.VIRGIN.soil, 90);
-      paintDots(buffer, crop.VIRGIN.mark, 5, 2);
+      paintDots(buffer, crop.VIRGIN.mark, 8, 3);
       break;
 
     case UsageTile.PLOWED:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, crop.PLOWED.soil);
-      paintFurrows(buffer, crop.PLOWED.mark, 4, 2);
-      paintFurrows(buffer, crop.PLOWED.markAlt, 4, 1);
+      paintFurrows(buffer, crop.PLOWED.mark, 8, 4);
+      paintFurrows(buffer, crop.PLOWED.markAlt, 8, 2);
       break;
 
     case UsageTile.CULTIVATED:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, crop.CULTIVATED.soil);
-      paintFurrows(buffer, crop.CULTIVATED.mark, 2, 1);
+      paintFurrows(buffer, crop.CULTIVATED.mark, 4, 2);
       break;
 
     case UsageTile.SEEDED:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, crop.SEEDED.soil);
-      paintFurrows(buffer, crop.SEEDED.markAlt, 4, 1);
-      paintDots(buffer, crop.SEEDED.mark, 4, 2);
+      paintFurrows(buffer, crop.SEEDED.markAlt, 8, 2);
+      paintDots(buffer, crop.SEEDED.mark, 6, 3);
       break;
 
     case UsageTile.GERMINATING:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, crop.GERMINATING.soil);
-      paintFurrows(buffer, crop.GERMINATING.markAlt, 4, 1);
-      paintDots(buffer, crop.GERMINATING.mark, 4, 2);
-      paintDots(buffer, crop.GERMINATING.mark, 4, 3);
+      paintFurrows(buffer, crop.GERMINATING.markAlt, 8, 2);
+      paintDots(buffer, crop.GERMINATING.mark, 6, 3);
+      paintDots(buffer, crop.GERMINATING.mark, 6, 5);
       break;
 
     // The tile is drawn at full growth and the progress travels as a tint
     // (`growthTint`), which is what keeps one tile per state.
     case UsageTile.GROWING:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, crop.GROWING.soil);
-      paintStalks(buffer, crop.GROWING.mark, crop.GROWING.markAlt, 3);
+      paintStalks(buffer, crop.GROWING.mark, crop.GROWING.markAlt, 5);
       break;
 
     case UsageTile.READY_TO_HARVEST:
@@ -320,7 +342,7 @@ export function paintUsageTile(tile: UsageTile): PixelBuffer {
 
     case UsageTile.FOREST_PLOT:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, PALETTE.use.FOREST_PLOT, 70);
-      paintHatch(buffer, PALETTE.ui.outlineForestPlot, 150, 3);
+      paintHatch(buffer, PALETTE.ui.outlineForestPlot, 150, 5);
       break;
 
     case UsageTile.PENDING:
@@ -330,7 +352,7 @@ export function paintUsageTile(tile: UsageTile): PixelBuffer {
 
     case UsageTile.MISSING:
       fillRect(buffer, 0, 0, buffer.width, buffer.height, PALETTE.ui.missing, 255);
-      paintHatch(buffer, 0x000000, 255, 2);
+      paintHatch(buffer, 0x000000, 255, 3);
       break;
   }
 

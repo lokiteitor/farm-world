@@ -114,36 +114,55 @@ function paintNoise(
 }
 
 /**
- * Grass (GDD section 9). Base noise plus a few two pixel tufts, kept inside the
- * tile so the replicated border is plain ground and no tuft is cut in half by the
- * extrusion.
+ * Grass (GDD section 9). Rich grass texture with clustered blades, highlights,
+ * and delicate wild flower accents.
  */
 function paintGrass(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.GRASS;
-  paintNoise(tile, shades, variant, 0.14);
+  paintNoise(tile, shades, variant, 0.16);
   const stream = createHashStream(ART_SEED, variant, 1, HASH_SALT.TILE_SHAPE);
-  const tufts = 4 + stream.nextIndex(3);
+  
+  // Clustered grass tufts with highlights
+  const tufts = 8 + stream.nextIndex(6);
   for (let index = 0; index < tufts; index += 1) {
-    const x = 1 + stream.nextIndex(TERRAIN_TILE_PX - 2);
-    const y = 1 + stream.nextIndex(TERRAIN_TILE_PX - 3);
-    setPixel(tile, x, y, shades.accent);
+    const x = 2 + stream.nextIndex(TERRAIN_TILE_PX - 5);
+    const y = 3 + stream.nextIndex(TERRAIN_TILE_PX - 6);
+    // Root shadow
+    setPixel(tile, x + 1, y + 2, shades.dark);
+    // Blades
     setPixel(tile, x, y + 1, shades.accent);
+    setPixel(tile, x, y, shades.accent);
+    setPixel(tile, x + 1, y + 1, shades.light);
+    setPixel(tile, x + 1, y, shades.accent);
+    setPixel(tile, x + 2, y + 1, shades.accent);
+    setPixel(tile, x + 2, y, shades.light);
+  }
+
+  // Delicate wildflowers (yellow and white petals)
+  const flowers = 2 + stream.nextIndex(3);
+  for (let index = 0; index < flowers; index += 1) {
+    const fx = 3 + stream.nextIndex(TERRAIN_TILE_PX - 7);
+    const fy = 3 + stream.nextIndex(TERRAIN_TILE_PX - 7);
+    const flowerColor = stream.chance(0.5) ? 0xfff494 : 0xffffff;
+    setPixel(tile, fx, fy + 1, shades.dark); // stem
+    setPixel(tile, fx, fy, flowerColor); // blossom
+    setPixel(tile, fx + 1, fy, flowerColor);
   }
 }
 
 /**
- * Forest (GDD section 10). Dark ground with three or four canopy blobs, which is
- * what makes forest readable as an economic asset rather than as dark grass.
+ * Forest (GDD section 10). Rich forest canopy with layered crowns and ambient depth.
  */
 function paintForest(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.FOREST;
-  paintNoise(tile, shades, variant + 16, 0.18);
+  paintNoise(tile, shades, variant + 16, 0.2);
   const stream = createHashStream(ART_SEED, variant, 2, HASH_SALT.TILE_SHAPE);
-  const crowns = 3 + stream.nextIndex(2);
+  
+  const crowns = 5 + stream.nextIndex(3);
   for (let index = 0; index < crowns; index += 1) {
-    const centreX = 3 + stream.nextIndex(TERRAIN_TILE_PX - 6);
-    const centreY = 3 + stream.nextIndex(TERRAIN_TILE_PX - 6);
-    const radius = 2 + stream.nextIndex(2);
+    const centreX = 5 + stream.nextIndex(TERRAIN_TILE_PX - 10);
+    const centreY = 5 + stream.nextIndex(TERRAIN_TILE_PX - 10);
+    const radius = 3 + stream.nextIndex(3);
     for (let y = centreY - radius; y <= centreY + radius; y += 1) {
       for (let x = centreX - radius; x <= centreX + radius; x += 1) {
         const dx = x - centreX;
@@ -151,51 +170,80 @@ function paintForest(tile: PixelBuffer, variant: number): void {
         if (dx * dx + dy * dy > radius * radius) {
           continue;
         }
-        setPixel(tile, x, y, dy >= radius - 1 ? shades.dark : shades.accent);
+        if (dy > radius * 0.4) {
+          setPixel(tile, x, y, shades.dark);
+        } else if (dy < -radius * 0.3 && dx < 0) {
+          setPixel(tile, x, y, shades.accent);
+        } else {
+          setPixel(tile, x, y, shades.light);
+        }
       }
     }
   }
 }
 
 /**
- * Mountain (GDD section 11). Grey ground with angular rock facets: a permanent
- * barrier has to read as one at a glance, because it is what divides territories
- * and creates the bottlenecks of the world.
+ * Mountain (GDD section 11). Detailed rock massifs with illuminated faces,
+ * steep shadows and scree.
  */
 function paintMountain(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.MOUNTAIN;
-  paintNoise(tile, shades, variant + 32, 0.2);
+  paintNoise(tile, shades, variant + 32, 0.22);
   const stream = createHashStream(ART_SEED, variant, 3, HASH_SALT.TILE_SHAPE);
-  const facets = 2 + stream.nextIndex(2);
-  for (let index = 0; index < facets; index += 1) {
-    const peakX = 3 + stream.nextIndex(TERRAIN_TILE_PX - 6);
-    const peakY = 2 + stream.nextIndex(TERRAIN_TILE_PX - 8);
-    const height = 4 + stream.nextIndex(4);
+  
+  const peaks = 3 + stream.nextIndex(3);
+  for (let index = 0; index < peaks; index += 1) {
+    const peakX = 5 + stream.nextIndex(TERRAIN_TILE_PX - 10);
+    const peakY = 4 + stream.nextIndex(TERRAIN_TILE_PX - 12);
+    const height = 6 + stream.nextIndex(6);
+    
     for (let row = 0; row < height; row += 1) {
-      const halfWidth = Math.ceil(row / 2);
+      const halfWidth = Math.ceil(row * 0.7);
       for (let x = peakX - halfWidth; x <= peakX + halfWidth; x += 1) {
-        setPixel(tile, x, peakY + row, x <= peakX ? shades.accent : shades.dark);
+        if (x < peakX - 1) {
+          setPixel(tile, x, peakY + row, shades.accent);
+        } else if (x > peakX) {
+          setPixel(tile, x, peakY + row, shades.dark);
+        } else {
+          setPixel(tile, x, peakY + row, shades.light);
+        }
       }
+      // Fissure / ridge shadow line
+      setPixel(tile, peakX, peakY + row, shades.dark);
     }
+  }
+
+  // Scree pebbles at the base
+  for (let p = 0; p < 8; p += 1) {
+    const px = 2 + stream.nextIndex(TERRAIN_TILE_PX - 4);
+    const py = TERRAIN_TILE_PX - 7 + stream.nextIndex(5);
+    setPixel(tile, px, py, shades.light);
+    setPixel(tile, px + 1, py, shades.dark);
   }
 }
 
 /**
- * Water (GDD section 12). Base tone with horizontal crests. Horizontal and not
- * random: a directional pattern reads as a surface, and the tile is the only cue
- * that a cell is impassable rather than merely unowned.
+ * Water (GDD section 12). Lively water surface with layered wave ripples,
+ * foam highlights and soft crests.
  */
 function paintWater(tile: PixelBuffer, variant: number): void {
   const shades = PALETTE.terrain.WATER;
-  paintNoise(tile, shades, variant + 48, 0.12);
+  paintNoise(tile, shades, variant + 48, 0.15);
   const stream = createHashStream(ART_SEED, variant, 4, HASH_SALT.TILE_SHAPE);
-  const crests = 3 + stream.nextIndex(2);
+  
+  const crests = 6 + stream.nextIndex(4);
   for (let index = 0; index < crests; index += 1) {
-    const y = 1 + stream.nextIndex(TERRAIN_TILE_PX - 2);
-    const x = 1 + stream.nextIndex(TERRAIN_TILE_PX - 6);
-    const length = 3 + stream.nextIndex(3);
+    const y = 2 + stream.nextIndex(TERRAIN_TILE_PX - 4);
+    const x = 2 + stream.nextIndex(TERRAIN_TILE_PX - 10);
+    const length = 5 + stream.nextIndex(6);
+    
     for (let step = 0; step < length; step += 1) {
+      // Wave crest
       setPixel(tile, x + step, y, shades.accent);
+      // Soft undertone / shadow below crest
+      if (step > 0 && step < length - 1) {
+        setPixel(tile, x + step, y + 1, shades.dark);
+      }
     }
   }
 }

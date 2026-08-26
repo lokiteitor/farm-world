@@ -21,7 +21,7 @@ export const CELLS_PER_CHUNK = CHUNK_SIZE * CHUNK_SIZE;
 export const CELL_SIZE_M = 10;
 
 /** Side of a cell in pixels at zoom 1 (plan section 2). */
-export const CELL_PX = 16;
+export const CELL_PX = 32;
 
 /**
  * Shared ceiling on the size of a selection (plan section 2, resolution of GDD
